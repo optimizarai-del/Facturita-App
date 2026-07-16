@@ -180,7 +180,18 @@
       margin-top: 22px; padding: 18px; border-radius: 14px;
       background: var(--bg); border: 1px solid var(--line);
     }
-    .cert-head { display: flex; align-items: center; gap: 10px; }
+    .cert-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .pill.loading {
+      background: var(--load-bg); color: var(--load-ink);
+      display: inline-flex; align-items: center; gap: 7px;
+    }
+    .spinner {
+      width: 12px; height: 12px; border-radius: 50%;
+      border: 2px solid color-mix(in srgb, var(--load-ink) 35%, transparent);
+      border-top-color: var(--load-ink);
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
     .aviso {
       font-size: 0.85rem; line-height: 1.5; margin: 12px 0 0;
       padding: 10px 12px; border-radius: 10px;
@@ -402,6 +413,11 @@
       el.className = 'pill ' + (ok ? 'ok' : 'err');
       el.textContent = ok ? 'configurado ✅' : 'no configurado';
     }
+    function setCertGenerando() {
+      const el = $('cert-estado');
+      el.className = 'pill loading';
+      el.innerHTML = '<span class="spinner"></span> generando… (puede tardar unos minutos)';
+    }
     function setCertStatus(kind, msg) {
       const el = $('cert-status');
       el.className = 'status ' + kind;
@@ -411,7 +427,8 @@
       const password = $('clave-fiscal').value;
       if (!password) { setCertStatus('err', 'Ingresá tu clave fiscal.'); return; }
       await guardar(); // asegura CUIT y token guardados
-      setCertStatus('loading', '⏳ Generando certificado en AFIP… puede tardar hasta un minuto.');
+      setCertStatus('loading', '⏳ Generando certificado en AFIP…');
+      setCertGenerando();
       $('btn-cert').disabled = true;
       try {
         const r = await fetch('/api/afip/cert', {
@@ -426,9 +443,11 @@
           $('clave-fiscal').value = ''; // limpiamos la clave del campo
         } else {
           setCertStatus('err', `❌ ${d.error || 'No se pudo generar el certificado'}`);
+          loadConfig(); // restaura el badge al estado real
         }
       } catch (e) {
         setCertStatus('err', '❌ Error de red al generar el certificado.');
+        loadConfig();
       } finally {
         $('btn-cert').disabled = false;
       }
