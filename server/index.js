@@ -8,6 +8,7 @@ import { testConnection, generarCertificado } from './services/afip.js';
 import { readFacturasFromBuffer } from './services/reader.js';
 import { procesarFacturas } from './services/facturador.js';
 import { guardarResultados, buildResultadosWorkbook } from './services/exporter.js';
+import { generarPDFs } from './services/pdf.js';
 
 // Guardamos el último resultado en memoria para permitir re-descargar el Excel.
 let ultimoResultado = null;
@@ -121,13 +122,27 @@ app.post('/api/facturar', upload.single('archivo'), async (req, res) => {
     ultimoResultado = result;
 
     // Guardar Excel de resultados en la carpeta de salida.
+    const settings = await readSettings();
+    let carpeta = null;
     try {
-      const settings = await readSettings();
-      const { carpeta } = await guardarResultados(result, settings);
+      const out = await guardarResultados(result, settings);
+      carpeta = out.carpeta;
       result.carpeta = carpeta;
     } catch (e) {
       console.error('No se pudo guardar el Excel de resultados:', e.message);
       result.carpetaError = e.message;
+    }
+
+    // Generar PDFs de las facturas realizadas (si se pidió y hay carpeta).
+    const quierePdf = String(req.body?.generarPdf ?? 'true') !== 'false';
+    if (quierePdf && carpeta && result.resumen.realizadas > 0) {
+      try {
+        const pdf = await generarPDFs(result.resultados, settings, carpeta);
+        result.pdf = pdf;
+      } catch (e) {
+        console.error('Error generando PDFs:', e.message);
+        result.pdf = { generados: 0, errores: [{ error: e.message }] };
+      }
     }
 
     res.json(result);

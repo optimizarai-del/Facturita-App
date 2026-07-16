@@ -328,6 +328,15 @@
         <span id="nombre-archivo" class="soon"></span>
       </div>
       <div class="row">
+        <label class="toggle">
+          <span class="switch">
+            <input type="checkbox" id="generar-pdf" checked />
+            <span class="slider"></span>
+          </span>
+          Generar PDF de cada factura
+        </label>
+      </div>
+      <div class="row">
         <button type="button" class="btn btn-primary" id="btn-facturar" disabled>Generar facturas</button>
       </div>
 
@@ -519,6 +528,7 @@
 
       const fd = new FormData();
       fd.append('archivo', f);
+      fd.append('generarPdf', $('generar-pdf').checked ? 'true' : 'false');
       setFactStatus('loading', '⏳ Emitiendo facturas en AFIP… esto puede tardar unos segundos.');
       $('btn-facturar').disabled = true;
       try {
@@ -530,8 +540,9 @@
           `${realizadas} realizada(s) · ${pendientes} pendiente(s) — ${ambiente}`);
         // Mostrar descarga y carpeta donde se guardó.
         $('descarga').hidden = false;
+        const pdfTxt = data.pdf ? ` · ${data.pdf.generados} PDF(s) generado(s)` : '';
         $('carpeta-info').textContent = data.carpeta
-          ? `Guardado en: ${data.carpeta}`
+          ? `Guardado en: ${data.carpeta}${pdfTxt}`
           : (data.carpetaError ? `No se pudo guardar en disco: ${data.carpetaError}` : '');
         renderResultados(data);
       } catch (e) {

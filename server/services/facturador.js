@@ -114,6 +114,15 @@ async function emitirUna(afip, row, settings) {
       nroComprobante: res.voucherNumber,
       puntoVenta: data.PtoVta,
       tipoCbte: data.CbteTipo,
+      // Datos extra para el PDF y el QR de AFIP:
+      fecha: data.CbteFch, // yyyymmdd
+      docTipo: data.DocTipo,
+      docNro: data.DocNro,
+      importeNum: data.ImpTotal,
+      neto: data.ImpNeto,
+      iva: data.ImpIVA,
+      concepto: data.Concepto,
+      descripcion: row.descripcion || '',
     };
   } catch (err) {
     return {
