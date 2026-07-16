@@ -319,8 +319,11 @@
       </div>
       <p class="desc">Subí la plantilla completa. Se emite una factura por fila y vas a ver el resultado de cada una.</p>
 
+      <label for="carpeta">Carpeta de destino (opcional)</label>
+      <input type="text" id="carpeta" placeholder="Ej: C:\Users\vos\Desktop\Facturas — vacío = carpeta 'salida' del proyecto" />
+
       <input type="file" id="archivo" accept=".xlsx" hidden />
-      <div class="row" style="margin-top:0;">
+      <div class="row">
         <button type="button" class="btn btn-ghost" id="btn-elegir">Elegir archivo…</button>
         <span id="nombre-archivo" class="soon"></span>
       </div>
@@ -329,6 +332,12 @@
       </div>
 
       <div id="facturar-status" class="status"></div>
+      <div id="descarga" class="row" hidden>
+        <a href="/api/resultados.xlsx" download>
+          <button type="button" class="btn btn-primary">⬇️ Descargar Excel de resultados</button>
+        </a>
+        <span id="carpeta-info" class="soon"></span>
+      </div>
       <div id="resumen" class="resumen" hidden></div>
       <div id="tabla-wrap" class="tabla-wrap" hidden>
         <table id="tabla-resultados">
@@ -362,6 +371,7 @@
         if (c.cuit) $('cuit').value = c.cuit;
         if (c.tieneAccessToken) $('token').placeholder = '•••••• (guardado)';
         if (c.certAlias) $('alias').value = c.certAlias;
+        if (c.carpetaSalida) $('carpeta').value = c.carpetaSalida;
         setCertEstado(c.tieneCertificado);
         $('produccion').checked = Boolean(c.production);
         updateBadge();
@@ -500,6 +510,13 @@
     async function facturar() {
       const f = $('archivo').files[0];
       if (!f) return;
+      // Guardar la carpeta de destino antes de facturar.
+      const carpeta = $('carpeta').value.trim();
+      await fetch('/api/config', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ carpetaSalida: carpeta }),
+      });
+
       const fd = new FormData();
       fd.append('archivo', f);
       setFactStatus('loading', '⏳ Emitiendo facturas en AFIP… esto puede tardar unos segundos.');
@@ -511,6 +528,11 @@
         const { realizadas, pendientes, ambiente } = data.resumen;
         setFactStatus(pendientes === 0 ? 'ok' : 'loading',
           `${realizadas} realizada(s) · ${pendientes} pendiente(s) — ${ambiente}`);
+        // Mostrar descarga y carpeta donde se guardó.
+        $('descarga').hidden = false;
+        $('carpeta-info').textContent = data.carpeta
+          ? `Guardado en: ${data.carpeta}`
+          : (data.carpetaError ? `No se pudo guardar en disco: ${data.carpetaError}` : '');
         renderResultados(data);
       } catch (e) {
         setFactStatus('err', '❌ Error de red al facturar.');

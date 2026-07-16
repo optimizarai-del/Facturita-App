@@ -7,6 +7,10 @@ import { readSettings, saveSettings } from './config/settings.js';
 import { testConnection, generarCertificado } from './services/afip.js';
 import { readFacturasFromBuffer } from './services/reader.js';
 import { procesarFacturas } from './services/facturador.js';
+import { guardarResultados, buildResultadosWorkbook } from './services/exporter.js';
+
+// Guardamos el último resultado en memoria para permitir re-descargar el Excel.
+let ultimoResultado = null;
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -114,10 +118,39 @@ app.post('/api/facturar', upload.single('archivo'), async (req, res) => {
       return res.status(400).json({ error: 'El Excel no tiene filas de facturas para procesar.' });
     }
     const result = await procesarFacturas(rows);
+    ultimoResultado = result;
+
+    // Guardar Excel de resultados en la carpeta de salida.
+    try {
+      const settings = await readSettings();
+      const { carpeta } = await guardarResultados(result, settings);
+      result.carpeta = carpeta;
+    } catch (e) {
+      console.error('No se pudo guardar el Excel de resultados:', e.message);
+      result.carpetaError = e.message;
+    }
+
     res.json(result);
   } catch (err) {
     console.error('Error al facturar:', err);
     res.status(500).json({ error: err.message || 'No se pudieron procesar las facturas' });
+  }
+});
+
+// Descargar el Excel de resultados del último procesamiento.
+app.get('/api/resultados.xlsx', async (req, res) => {
+  try {
+    if (!ultimoResultado) {
+      return res.status(404).json({ error: 'Todavía no se generó ningún resultado.' });
+    }
+    const wb = await buildResultadosWorkbook(ultimoResultado);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="resultados-facturas.xlsx"');
+    await wb.xlsx.write(res);
+    res.end();
+  } catch (err) {
+    console.error('Error al descargar resultados:', err);
+    res.status(500).json({ error: 'No se pudo generar el Excel de resultados' });
   }
 });
 
