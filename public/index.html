@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="es-AR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FacturitaApp</title>
+  <style>
+    :root {
+      --azul: #2e5a88;
+      --azul-osc: #1f3f61;
+      --bg: #f4f6f9;
+      --txt: #1f2933;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--txt);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    header {
+      width: 100%;
+      background: var(--azul);
+      color: #fff;
+      padding: 20px 24px;
+      text-align: center;
+    }
+    header h1 { margin: 0; font-size: 1.5rem; }
+    header p { margin: 4px 0 0; opacity: 0.85; font-size: 0.9rem; }
+    main {
+      width: 100%;
+      max-width: 720px;
+      padding: 24px;
+    }
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+      margin-bottom: 20px;
+    }
+    .card h2 { margin: 0 0 8px; font-size: 1.1rem; }
+    .card p { margin: 0 0 16px; color: #52606d; font-size: 0.92rem; }
+    .step-num {
+      display: inline-block;
+      width: 26px; height: 26px;
+      background: var(--azul);
+      color: #fff;
+      border-radius: 50%;
+      text-align: center;
+      line-height: 26px;
+      font-size: 0.85rem;
+      margin-right: 8px;
+    }
+    button {
+      background: var(--azul);
+      color: #fff;
+      border: none;
+      padding: 12px 20px;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    button:hover { background: var(--azul-osc); }
+    button:disabled { background: #b8c2cc; cursor: not-allowed; }
+    .muted { color: #9aa5b1; font-size: 0.85rem; }
+    label { display: block; font-size: 0.85rem; font-weight: 600; margin: 12px 0 4px; }
+    input[type="text"] {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #cbd2d9;
+      border-radius: 8px;
+      font-size: 0.95rem;
+    }
+    .row { display: flex; gap: 10px; align-items: center; margin-top: 16px; flex-wrap: wrap; }
+    .toggle { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; }
+    .status { margin-top: 14px; font-size: 0.9rem; padding: 10px 12px; border-radius: 8px; display: none; }
+    .status.ok { background: #e3f9e5; color: #1f7a3d; display: block; }
+    .status.err { background: #ffe3e3; color: #b21f1f; display: block; }
+    .status.loading { background: #eef2f6; color: #52606d; display: block; }
+    .badge { font-size: 0.75rem; background: #eef2f6; color: #52606d; padding: 3px 8px; border-radius: 20px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🧾 FacturitaApp</h1>
+    <p>Generá facturas AFIP desde un Excel</p>
+  </header>
+  <main>
+    <div class="card">
+      <h2><span class="step-num">1</span>Descargá la plantilla</h2>
+      <p>Bajá el modelo de Excel, borrá la fila de ejemplo y cargá una fila por cada factura que quieras emitir.</p>
+      <a href="/api/plantilla" download>
+        <button type="button">⬇️ Descargar plantilla Excel</button>
+      </a>
+    </div>
+
+    <div class="card">
+      <h2><span class="step-num">2</span>Conectá con AFIP <span id="ambiente-badge" class="badge">homologación</span></h2>
+      <p>Ingresá tu CUIT y tu <b>access token</b> de AFIP SDK. El token es gratis: creá una cuenta en
+        <a href="https://app.afipsdk.com/" target="_blank" rel="noopener">app.afipsdk.com</a> y copialo desde ahí.
+        No es tu clave fiscal.</p>
+
+      <label for="cuit">CUIT</label>
+      <input type="text" id="cuit" placeholder="27319422590" inputmode="numeric" />
+
+      <label for="token">Access token de AFIP SDK</label>
+      <input type="text" id="token" placeholder="Pegá tu access token" />
+
+      <div class="row">
+        <label class="toggle" style="margin:0;">
+          <input type="checkbox" id="produccion" />
+          Usar producción (facturas reales)
+        </label>
+      </div>
+
+      <div class="row">
+        <button type="button" id="btn-guardar">💾 Guardar</button>
+        <button type="button" id="btn-test">🔌 Probar conexión</button>
+      </div>
+
+      <div id="afip-status" class="status"></div>
+    </div>
+
+    <div class="card">
+      <h2><span class="step-num">3</span>Subí el Excel y generá</h2>
+      <p class="muted">Próximamente — Milestone 3</p>
+    </div>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+
+    function setStatus(kind, msg) {
+      const el = $('afip-status');
+      el.className = 'status ' + kind;
+      el.innerHTML = msg;
+    }
+
+    function updateBadge() {
+      $('ambiente-badge').textContent = $('produccion').checked
+        ? 'producción' : 'homologación';
+    }
+
+    async function loadConfig() {
+      try {
+        const r = await fetch('/api/config');
+        const c = await r.json();
+        if (c.cuit) $('cuit').value = c.cuit;
+        if (c.tieneAccessToken) $('token').placeholder = '•••••• (guardado)';
+        $('produccion').checked = Boolean(c.production);
+        updateBadge();
+      } catch (_) { /* primera vez, sin config */ }
+    }
+
+    async function guardar() {
+      const cuit = $('cuit').value.replace(/\D/g, '');
+      if (!cuit) { setStatus('err', 'Ingresá un CUIT.'); return; }
+      const body = { cuit, production: $('produccion').checked };
+      const token = $('token').value.trim();
+      if (token) body.accessToken = token; // solo lo mandamos si escribió uno nuevo
+      const r = await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (r.ok) setStatus('ok', '✅ Configuración guardada.');
+      else setStatus('err', 'No se pudo guardar.');
+    }
+
+    async function probar() {
+      await guardar();
+      setStatus('loading', '⏳ Consultando servidores de AFIP...');
+      $('btn-test').disabled = true;
+      try {
+        const r = await fetch('/api/afip/test', { method: 'POST' });
+        const d = await r.json();
+        if (d.ok) {
+          setStatus('ok', `✅ Conexión OK con AFIP (${d.ambiente}).<br>
+            <small>AppServer: ${d.status.AppServer} · DbServer: ${d.status.DbServer} · AuthServer: ${d.status.AuthServer}</small>`);
+        } else {
+          setStatus('err', `❌ ${d.error || 'AFIP respondió con estado no OK'}`);
+        }
+      } catch (e) {
+        setStatus('err', '❌ Error de red al probar la conexión.');
+      } finally {
+        $('btn-test').disabled = false;
+      }
+    }
+
+    $('produccion').addEventListener('change', updateBadge);
+    $('btn-guardar').addEventListener('click', guardar);
+    $('btn-test').addEventListener('click', probar);
+    loadConfig();
+  </script>
+</body>
+</html>

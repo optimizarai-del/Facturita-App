@@ -1,0 +1,6 @@
+node_modules/
+*.log
+.env
+salida/
+certificados/
+config.local.json
