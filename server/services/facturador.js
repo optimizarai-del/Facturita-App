@@ -126,9 +126,15 @@ async function emitirUna(afip, row, settings) {
 
 // AFIP devuelve errores anidados; extraemos un mensaje legible.
 function limpiarError(err) {
-  if (err?.data?.message) return err.data.message;
+  const d = err?.data;
+  // Errores de validación del SDK: { data_errors: { campo: mensaje } }
+  if (d?.data_errors && typeof d.data_errors === 'object') {
+    return Object.values(d.data_errors).join(' · ');
+  }
+  // Errores de negocio de AFIP: { data_errors: [...] } o message
+  if (Array.isArray(d?.errors)) return d.errors.map((e) => e.msg || e.Msg || e).join(' · ');
+  if (d?.message) return d.message;
   if (typeof err?.message === 'string') {
-    // afip.js suele devolver JSON stringificado con Err/Msg
     const m = err.message.match(/"Msg"\s*:\s*"([^"]+)"/);
     if (m) return m[1];
     return err.message;

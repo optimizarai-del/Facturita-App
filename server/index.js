@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildTemplateWorkbook } from './services/template.js';
 import { readSettings, saveSettings } from './config/settings.js';
-import { testConnection } from './services/afip.js';
+import { testConnection, generarCertificado } from './services/afip.js';
 import { readFacturasFromBuffer } from './services/reader.js';
 import { procesarFacturas } from './services/facturador.js';
 
@@ -48,6 +48,8 @@ app.get('/api/config', async (req, res) => {
       production: s.production,
       carpetaSalida: s.carpetaSalida,
       tieneAccessToken: Boolean(s.accessToken),
+      tieneCertificado: Boolean(s.cert && s.key),
+      certAlias: s.certAlias,
     });
   } catch (err) {
     console.error('Error leyendo config:', err);
@@ -82,6 +84,21 @@ app.post('/api/afip/test', async (req, res) => {
     res.status(502).json({
       ok: false,
       error: err.message || 'No se pudo conectar con AFIP',
+    });
+  }
+});
+
+// Generar certificado con AFIP SDK (usa la clave fiscal de forma transitoria)
+app.post('/api/afip/cert', async (req, res) => {
+  try {
+    const { password, username, alias } = req.body || {};
+    const result = await generarCertificado({ password, username, alias });
+    res.json(result);
+  } catch (err) {
+    console.error('Error generando certificado:', err?.message);
+    res.status(502).json({
+      ok: false,
+      error: err?.data?.message || err.message || 'No se pudo generar el certificado',
     });
   }
 });

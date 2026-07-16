@@ -175,6 +175,32 @@
     .pill.ok { background: var(--ok-bg); color: var(--ok-ink); }
     .pill.err { background: var(--err-bg); color: var(--err-ink); }
 
+    /* Caja de certificado */
+    .cert-box {
+      margin-top: 22px; padding: 18px; border-radius: 14px;
+      background: var(--bg); border: 1px solid var(--line);
+    }
+    .cert-head { display: flex; align-items: center; gap: 10px; }
+    .aviso {
+      font-size: 0.85rem; line-height: 1.5; margin: 12px 0 0;
+      padding: 10px 12px; border-radius: 10px;
+      background: color-mix(in srgb, #ff9f0a 14%, transparent);
+      color: color-mix(in srgb, #b26a00 90%, var(--ink));
+    }
+    @media (prefers-color-scheme: dark) {
+      .aviso { color: #ffd479; }
+    }
+    input[type="password"] {
+      width: 100%; padding: 13px 15px;
+      border: 1px solid var(--line); border-radius: 12px;
+      font-size: 1rem; background: var(--card); color: var(--ink);
+      font-family: inherit;
+    }
+    input[type="password"]:focus {
+      outline: none; border-color: var(--blue);
+      box-shadow: 0 0 0 4px color-mix(in srgb, var(--blue) 18%, transparent);
+    }
+
     /* ---- Mobile ---- */
     @media (max-width: 560px) {
       .hero { padding: 36px 20px 16px; }
@@ -250,6 +276,29 @@
       </div>
 
       <div id="afip-status" class="status"></div>
+
+      <div class="cert-box">
+        <div class="cert-head">
+          <b>Certificado digital</b>
+          <span id="cert-estado" class="pill err">no configurado</span>
+        </div>
+        <p class="desc" style="margin:8px 0 0;">
+          Para emitir con <b>tu</b> CUIT hace falta un certificado. AFIP SDK lo genera con tu clave fiscal.
+        </p>
+        <p class="aviso">⚠️ Tu clave fiscal se envía a los servidores de afipsdk.com para generar el certificado.
+          Se usa solo en ese momento y <b>no se guarda</b> en la app (solo se guarda el certificado resultante).</p>
+
+        <label for="clave-fiscal">Clave fiscal de AFIP</label>
+        <input type="password" id="clave-fiscal" placeholder="Tu clave fiscal" autocomplete="off" />
+
+        <label for="alias">Alias del certificado (opcional)</label>
+        <input type="text" id="alias" placeholder="facturitaapp" />
+
+        <div class="row">
+          <button type="button" class="btn btn-ghost" id="btn-cert">Generar certificado</button>
+        </div>
+        <div id="cert-status" class="status"></div>
+      </div>
     </div>
 
     <div class="card">
@@ -301,6 +350,8 @@
         const c = await r.json();
         if (c.cuit) $('cuit').value = c.cuit;
         if (c.tieneAccessToken) $('token').placeholder = '•••••• (guardado)';
+        if (c.certAlias) $('alias').value = c.certAlias;
+        setCertEstado(c.tieneCertificado);
         $('produccion').checked = Boolean(c.production);
         updateBadge();
       } catch (_) { /* primera vez, sin config */ }
@@ -344,6 +395,45 @@
     $('produccion').addEventListener('change', updateBadge);
     $('btn-guardar').addEventListener('click', guardar);
     $('btn-test').addEventListener('click', probar);
+
+    // ---- Certificado ----
+    function setCertEstado(ok) {
+      const el = $('cert-estado');
+      el.className = 'pill ' + (ok ? 'ok' : 'err');
+      el.textContent = ok ? 'configurado ✅' : 'no configurado';
+    }
+    function setCertStatus(kind, msg) {
+      const el = $('cert-status');
+      el.className = 'status ' + kind;
+      el.innerHTML = msg;
+    }
+    async function generarCert() {
+      const password = $('clave-fiscal').value;
+      if (!password) { setCertStatus('err', 'Ingresá tu clave fiscal.'); return; }
+      await guardar(); // asegura CUIT y token guardados
+      setCertStatus('loading', '⏳ Generando certificado en AFIP… puede tardar hasta un minuto.');
+      $('btn-cert').disabled = true;
+      try {
+        const r = await fetch('/api/afip/cert', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password, alias: $('alias').value.trim() }),
+        });
+        const d = await r.json();
+        if (d.ok) {
+          setCertStatus('ok', `✅ Certificado generado (alias: ${d.alias}). Autorización wsfe: ${d.wsauth}.`);
+          setCertEstado(true);
+          $('clave-fiscal').value = ''; // limpiamos la clave del campo
+        } else {
+          setCertStatus('err', `❌ ${d.error || 'No se pudo generar el certificado'}`);
+        }
+      } catch (e) {
+        setCertStatus('err', '❌ Error de red al generar el certificado.');
+      } finally {
+        $('btn-cert').disabled = false;
+      }
+    }
+    $('btn-cert').addEventListener('click', generarCert);
 
     // ---- Paso 3: facturación ----
     function setFactStatus(kind, msg) {
