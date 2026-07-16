@@ -152,6 +152,29 @@
     .soon { color: var(--gray); font-size: 0.95rem; margin: 0; }
     .card.disabled { opacity: .55; }
 
+    /* Resumen */
+    .resumen { display: flex; gap: 12px; margin-top: 20px; flex-wrap: wrap; }
+    .chip {
+      flex: 1 1 120px; text-align: center;
+      background: var(--bg); border: 1px solid var(--line);
+      border-radius: 14px; padding: 14px 10px;
+    }
+    .chip .num { font-size: 1.8rem; font-weight: 700; line-height: 1; }
+    .chip .lbl { font-size: 0.78rem; color: var(--gray); margin-top: 5px; }
+    .chip.ok .num { color: var(--ok-ink); }
+    .chip.err .num { color: var(--err-ink); }
+
+    /* Tabla */
+    .tabla-wrap { margin-top: 18px; overflow-x: auto; border-radius: 14px; border: 1px solid var(--line); }
+    table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    th, td { padding: 11px 13px; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
+    th { background: var(--bg); font-weight: 600; color: var(--gray); font-size: 0.78rem; text-transform: uppercase; letter-spacing: .03em; }
+    tbody tr:last-child td { border-bottom: none; }
+    td.detalle { white-space: normal; min-width: 200px; }
+    .pill { font-size: 0.76rem; font-weight: 600; padding: 3px 10px; border-radius: 980px; }
+    .pill.ok { background: var(--ok-bg); color: var(--ok-ink); }
+    .pill.err { background: var(--err-bg); color: var(--err-ink); }
+
     /* ---- Mobile ---- */
     @media (max-width: 560px) {
       .hero { padding: 36px 20px 16px; }
@@ -229,12 +252,32 @@
       <div id="afip-status" class="status"></div>
     </div>
 
-    <div class="card disabled">
+    <div class="card">
       <div class="card-head">
         <span class="step-num">3</span>
         <h3>Subí el Excel y generá</h3>
       </div>
-      <p class="soon">Próximamente — Milestone 3</p>
+      <p class="desc">Subí la plantilla completa. Se emite una factura por fila y vas a ver el resultado de cada una.</p>
+
+      <input type="file" id="archivo" accept=".xlsx" hidden />
+      <div class="row" style="margin-top:0;">
+        <button type="button" class="btn btn-ghost" id="btn-elegir">Elegir archivo…</button>
+        <span id="nombre-archivo" class="soon"></span>
+      </div>
+      <div class="row">
+        <button type="button" class="btn btn-primary" id="btn-facturar" disabled>Generar facturas</button>
+      </div>
+
+      <div id="facturar-status" class="status"></div>
+      <div id="resumen" class="resumen" hidden></div>
+      <div id="tabla-wrap" class="tabla-wrap" hidden>
+        <table id="tabla-resultados">
+          <thead>
+            <tr><th>Fila</th><th>Cliente</th><th>Tipo</th><th>Importe</th><th>Estado</th><th>Detalle</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
     </div>
   </main>
 
@@ -301,6 +344,73 @@
     $('produccion').addEventListener('change', updateBadge);
     $('btn-guardar').addEventListener('click', guardar);
     $('btn-test').addEventListener('click', probar);
+
+    // ---- Paso 3: facturación ----
+    function setFactStatus(kind, msg) {
+      const el = $('facturar-status');
+      el.className = 'status ' + kind;
+      el.innerHTML = msg;
+    }
+    const fmtMoney = (n) =>
+      isNaN(Number(n)) ? n : Number(n).toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
+
+    $('btn-elegir').addEventListener('click', () => $('archivo').click());
+    $('archivo').addEventListener('change', () => {
+      const f = $('archivo').files[0];
+      $('nombre-archivo').textContent = f ? f.name : '';
+      $('btn-facturar').disabled = !f;
+    });
+
+    function renderResultados(data) {
+      const { resumen, resultados } = data;
+      const r = $('resumen');
+      r.hidden = false;
+      r.innerHTML = `
+        <div class="chip"><div class="num">${resumen.total}</div><div class="lbl">Total</div></div>
+        <div class="chip ok"><div class="num">${resumen.realizadas}</div><div class="lbl">Realizadas</div></div>
+        <div class="chip err"><div class="num">${resumen.pendientes}</div><div class="lbl">Pendientes</div></div>`;
+
+      const tbody = $('tabla-resultados').querySelector('tbody');
+      tbody.innerHTML = resultados.map((f) => {
+        const ok = f.estado === 'ok';
+        const detalle = ok
+          ? `CAE ${f.cae} · N° ${f.puntoVenta}-${String(f.nroComprobante).padStart(8, '0')}`
+          : f.error;
+        return `<tr>
+          <td>${f.fila}</td>
+          <td>${f.nombre || '-'}</td>
+          <td>${f.tipo || '-'}</td>
+          <td>${fmtMoney(f.importe)}</td>
+          <td><span class="pill ${ok ? 'ok' : 'err'}">${ok ? '✅ OK' : '❌ Error'}</span></td>
+          <td class="detalle">${detalle}</td>
+        </tr>`;
+      }).join('');
+      $('tabla-wrap').hidden = false;
+    }
+
+    async function facturar() {
+      const f = $('archivo').files[0];
+      if (!f) return;
+      const fd = new FormData();
+      fd.append('archivo', f);
+      setFactStatus('loading', '⏳ Emitiendo facturas en AFIP… esto puede tardar unos segundos.');
+      $('btn-facturar').disabled = true;
+      try {
+        const r = await fetch('/api/facturar', { method: 'POST', body: fd });
+        const data = await r.json();
+        if (!r.ok) { setFactStatus('err', `❌ ${data.error || 'Error al procesar'}`); return; }
+        const { realizadas, pendientes, ambiente } = data.resumen;
+        setFactStatus(pendientes === 0 ? 'ok' : 'loading',
+          `${realizadas} realizada(s) · ${pendientes} pendiente(s) — ${ambiente}`);
+        renderResultados(data);
+      } catch (e) {
+        setFactStatus('err', '❌ Error de red al facturar.');
+      } finally {
+        $('btn-facturar').disabled = false;
+      }
+    }
+    $('btn-facturar').addEventListener('click', facturar);
+
     loadConfig();
   </script>
 </body>

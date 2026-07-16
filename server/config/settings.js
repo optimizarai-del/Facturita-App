@@ -9,6 +9,7 @@ const DEFAULTS = {
   cuit: '',
   production: false, // false = homologación (testing)
   accessToken: '', // solo necesario en producción
+  puntoVenta: 1, // punto de venta AFIP
   carpetaSalida: '',
 };
 

@@ -1,9 +1,17 @@
 import express from 'express';
+import multer from 'multer';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildTemplateWorkbook } from './services/template.js';
 import { readSettings, saveSettings } from './config/settings.js';
 import { testConnection } from './services/afip.js';
+import { readFacturasFromBuffer } from './services/reader.js';
+import { procesarFacturas } from './services/facturador.js';
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
+});
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -75,6 +83,24 @@ app.post('/api/afip/test', async (req, res) => {
       ok: false,
       error: err.message || 'No se pudo conectar con AFIP',
     });
+  }
+});
+
+// Milestone 3: subir Excel y emitir las facturas
+app.post('/api/facturar', upload.single('archivo'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No se recibió ningún archivo Excel.' });
+    }
+    const rows = await readFacturasFromBuffer(req.file.buffer);
+    if (!rows.length) {
+      return res.status(400).json({ error: 'El Excel no tiene filas de facturas para procesar.' });
+    }
+    const result = await procesarFacturas(rows);
+    res.json(result);
+  } catch (err) {
+    console.error('Error al facturar:', err);
+    res.status(500).json({ error: err.message || 'No se pudieron procesar las facturas' });
   }
 });
 
