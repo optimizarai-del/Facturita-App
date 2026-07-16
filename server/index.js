@@ -52,6 +52,7 @@ app.get('/api/config', async (req, res) => {
       cuit: s.cuit,
       production: s.production,
       carpetaSalida: s.carpetaSalida,
+      razonSocial: s.razonSocial,
       tieneAccessToken: Boolean(s.accessToken),
       tieneCertificado: Boolean(s.cert && s.key),
       certAlias: s.certAlias,
@@ -65,12 +66,13 @@ app.get('/api/config', async (req, res) => {
 // Milestone 2: guardar configuración
 app.post('/api/config', async (req, res) => {
   try {
-    const { cuit, production, accessToken, carpetaSalida } = req.body || {};
+    const { cuit, production, accessToken, carpetaSalida, razonSocial } = req.body || {};
     const patch = {};
     if (cuit !== undefined) patch.cuit = String(cuit).replace(/\D/g, '');
     if (production !== undefined) patch.production = Boolean(production);
     if (accessToken !== undefined) patch.accessToken = String(accessToken);
     if (carpetaSalida !== undefined) patch.carpetaSalida = String(carpetaSalida);
+    if (razonSocial !== undefined) patch.razonSocial = String(razonSocial);
     const next = await saveSettings(patch);
     res.json({ ok: true, cuit: next.cuit, production: next.production });
   } catch (err) {

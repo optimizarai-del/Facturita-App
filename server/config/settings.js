@@ -10,6 +10,7 @@ const DEFAULTS = {
   production: false, // false = homologación (testing)
   accessToken: '', // solo necesario en producción
   puntoVenta: 1, // punto de venta AFIP
+  razonSocial: '', // razón social del emisor (para el PDF)
   cert: '', // certificado X.509 (PEM) — generado con CreateCert
   key: '', // clave privada (PEM) — generada con CreateCert
   certAlias: '', // alias del certificado en AFIP

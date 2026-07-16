@@ -265,6 +265,9 @@
         <a class="inline" href="https://app.afipsdk.com/" target="_blank" rel="noopener">app.afipsdk.com</a>.
         No es tu clave fiscal.</p>
 
+      <label for="razon">Razón social (aparece en el PDF)</label>
+      <input type="text" id="razon" placeholder="Tu nombre o razón social" />
+
       <label for="cuit">CUIT</label>
       <input type="text" id="cuit" placeholder="27319422590" inputmode="numeric" />
 
@@ -378,6 +381,7 @@
         const r = await fetch('/api/config');
         const c = await r.json();
         if (c.cuit) $('cuit').value = c.cuit;
+        if (c.razonSocial) $('razon').value = c.razonSocial;
         if (c.tieneAccessToken) $('token').placeholder = '•••••• (guardado)';
         if (c.certAlias) $('alias').value = c.certAlias;
         if (c.carpetaSalida) $('carpeta').value = c.carpetaSalida;
@@ -390,7 +394,7 @@
     async function guardar() {
       const cuit = $('cuit').value.replace(/\D/g, '');
       if (!cuit) { setStatus('err', 'Ingresá un CUIT.'); return; }
-      const body = { cuit, production: $('produccion').checked };
+      const body = { cuit, production: $('produccion').checked, razonSocial: $('razon').value.trim() };
       const token = $('token').value.trim();
       if (token) body.accessToken = token; // solo lo mandamos si escribió uno nuevo
       const r = await fetch('/api/config', {

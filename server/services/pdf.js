@@ -56,19 +56,18 @@ export async function buildFacturaHTML(r, settings) {
     * { font-family: Arial, sans-serif; box-sizing: border-box; }
     body { margin: 0; padding: 18px; color: #111; font-size: 12px; }
     .box { border: 1px solid #000; }
-    .top { display: flex; position: relative; }
-    .top > div { padding: 10px 14px; }
-    .emisor { width: 50%; border-right: 1px solid #000; }
-    .receptor-cmp { width: 50%; }
-    .letra {
-      position: absolute; left: 50%; top: -1px; transform: translateX(-50%);
-      width: 46px; height: 46px; border: 1px solid #000; background: #fff;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 30px; font-weight: bold;
+    .top { display: flex; align-items: stretch; }
+    .emisor { flex: 1; padding: 12px 14px; }
+    .comprobante { flex: 1; padding: 12px 14px; border-left: 1px solid #000; }
+    .letra-col {
+      flex: 0 0 64px; border-left: 1px solid #000; border-right: 1px solid #000;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      padding: 8px 4px;
     }
-    .letra small { position: absolute; bottom: 2px; font-size: 7px; font-weight: normal; }
+    .letra-col .letra { font-size: 34px; font-weight: bold; line-height: 1; }
+    .letra-col .cod { font-size: 8px; color: #333; margin-top: 3px; }
     h1 { font-size: 18px; margin: 0 0 4px; }
-    h2 { font-size: 15px; margin: 0; }
+    h2 { font-size: 15px; margin: 0 0 6px; }
     .muted { color: #444; }
     .linea { border-top: 1px solid #000; }
     table { width: 100%; border-collapse: collapse; margin-top: 6px; }
@@ -84,13 +83,16 @@ export async function buildFacturaHTML(r, settings) {
   </style></head><body>
     <div class="box">
       <div class="top">
-        <div class="letra">${letra}<small>COD. ${r.tipoCbte}</small></div>
         <div class="emisor">
-          <h1>Facturita</h1>
+          <h1>${escapeHtml(settings.razonSocial) || `CUIT ${cuitEmisor}`}</h1>
           <div class="muted">CUIT: ${cuitEmisor}</div>
           <div class="muted">Punto de venta: ${String(r.puntoVenta).padStart(4, '0')}</div>
         </div>
-        <div class="receptor-cmp">
+        <div class="letra-col">
+          <div class="letra">${letra}</div>
+          <div class="cod">Cód. ${r.tipoCbte}</div>
+        </div>
+        <div class="comprobante">
           <h2>${NOMBRE_CBTE[r.tipoCbte] || 'COMPROBANTE'}</h2>
           <div><b>N°:</b> ${nro}</div>
           <div><b>Fecha:</b> ${fechaLinda(r.fecha)}</div>
