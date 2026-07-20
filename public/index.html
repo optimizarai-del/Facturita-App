@@ -175,6 +175,24 @@
     .pill.ok { background: var(--ok-bg); color: var(--ok-ink); }
     .pill.err { background: var(--err-bg); color: var(--err-ink); }
 
+    /* Caja de datos del emisor */
+    .emisor-box {
+      margin-top: 22px; padding: 18px; border-radius: 14px;
+      background: var(--bg); border: 1px solid var(--line);
+    }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    @media (max-width: 480px) { .grid2 { grid-template-columns: 1fr; } }
+    select {
+      width: 100%; padding: 13px 15px;
+      border: 1px solid var(--line); border-radius: 12px;
+      font-size: 1rem; background: var(--card); color: var(--ink);
+      font-family: inherit; cursor: pointer;
+    }
+    select:focus {
+      outline: none; border-color: var(--blue);
+      box-shadow: 0 0 0 4px color-mix(in srgb, var(--blue) 18%, transparent);
+    }
+
     /* Caja de certificado */
     .cert-box {
       margin-top: 22px; padding: 18px; border-radius: 14px;
@@ -273,6 +291,36 @@
 
       <label for="token">Access token de AFIP SDK</label>
       <input type="text" id="token" placeholder="Pegá tu access token" />
+
+      <div class="emisor-box">
+        <b>Datos del emisor</b> <span class="soon">(aparecen en el PDF)</span>
+        <div class="grid2">
+          <div>
+            <label for="cond-iva">Condición frente al IVA</label>
+            <select id="cond-iva">
+              <option>Responsable Monotributo</option>
+              <option>Responsable Inscripto</option>
+              <option>Exento</option>
+            </select>
+          </div>
+          <div>
+            <label for="punto-venta">Punto de venta</label>
+            <input type="text" id="punto-venta" inputmode="numeric" placeholder="1" />
+          </div>
+        </div>
+        <label for="domicilio">Domicilio comercial (opcional)</label>
+        <input type="text" id="domicilio" placeholder="Av. Siempre Viva 123, Ciudad" />
+        <div class="grid2">
+          <div>
+            <label for="iibb">Ingresos Brutos (opcional)</label>
+            <input type="text" id="iibb" placeholder="N° o 'Exento'" />
+          </div>
+          <div>
+            <label for="inicio">Inicio de actividades (opcional)</label>
+            <input type="text" id="inicio" placeholder="01/2020" />
+          </div>
+        </div>
+      </div>
 
       <div class="row">
         <label class="toggle">
@@ -382,6 +430,11 @@
         const c = await r.json();
         if (c.cuit) $('cuit').value = c.cuit;
         if (c.razonSocial) $('razon').value = c.razonSocial;
+        if (c.condicionIVAEmisor) $('cond-iva').value = c.condicionIVAEmisor;
+        $('punto-venta').value = c.puntoVenta || 1;
+        if (c.domicilio) $('domicilio').value = c.domicilio;
+        if (c.ingresosBrutos) $('iibb').value = c.ingresosBrutos;
+        if (c.inicioActividades) $('inicio').value = c.inicioActividades;
         if (c.tieneAccessToken) $('token').placeholder = '•••••• (guardado)';
         if (c.certAlias) $('alias').value = c.certAlias;
         if (c.carpetaSalida) $('carpeta').value = c.carpetaSalida;
@@ -394,7 +447,15 @@
     async function guardar() {
       const cuit = $('cuit').value.replace(/\D/g, '');
       if (!cuit) { setStatus('err', 'Ingresá un CUIT.'); return; }
-      const body = { cuit, production: $('produccion').checked, razonSocial: $('razon').value.trim() };
+      const body = {
+        cuit, production: $('produccion').checked,
+        razonSocial: $('razon').value.trim(),
+        condicionIVAEmisor: $('cond-iva').value,
+        puntoVenta: $('punto-venta').value.replace(/\D/g, '') || 1,
+        domicilio: $('domicilio').value.trim(),
+        ingresosBrutos: $('iibb').value.trim(),
+        inicioActividades: $('inicio').value.trim(),
+      };
       const token = $('token').value.trim();
       if (token) body.accessToken = token; // solo lo mandamos si escribió uno nuevo
       const r = await fetch('/api/config', {

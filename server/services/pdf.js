@@ -86,6 +86,10 @@ export async function buildFacturaHTML(r, settings) {
         <div class="emisor">
           <h1>${escapeHtml(settings.razonSocial) || `CUIT ${cuitEmisor}`}</h1>
           <div class="muted">CUIT: ${cuitEmisor}</div>
+          ${settings.condicionIVAEmisor ? `<div class="muted">${escapeHtml(settings.condicionIVAEmisor)}</div>` : ''}
+          ${settings.domicilio ? `<div class="muted">${escapeHtml(settings.domicilio)}</div>` : ''}
+          ${settings.ingresosBrutos ? `<div class="muted">Ingresos Brutos: ${escapeHtml(settings.ingresosBrutos)}</div>` : ''}
+          ${settings.inicioActividades ? `<div class="muted">Inicio de actividades: ${escapeHtml(settings.inicioActividades)}</div>` : ''}
           <div class="muted">Punto de venta: ${String(r.puntoVenta).padStart(4, '0')}</div>
         </div>
         <div class="letra-col">

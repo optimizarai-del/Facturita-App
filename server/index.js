@@ -53,6 +53,11 @@ app.get('/api/config', async (req, res) => {
       production: s.production,
       carpetaSalida: s.carpetaSalida,
       razonSocial: s.razonSocial,
+      puntoVenta: s.puntoVenta,
+      condicionIVAEmisor: s.condicionIVAEmisor,
+      domicilio: s.domicilio,
+      ingresosBrutos: s.ingresosBrutos,
+      inicioActividades: s.inicioActividades,
       tieneAccessToken: Boolean(s.accessToken),
       tieneCertificado: Boolean(s.cert && s.key),
       certAlias: s.certAlias,
@@ -66,13 +71,21 @@ app.get('/api/config', async (req, res) => {
 // Milestone 2: guardar configuración
 app.post('/api/config', async (req, res) => {
   try {
-    const { cuit, production, accessToken, carpetaSalida, razonSocial } = req.body || {};
+    const {
+      cuit, production, accessToken, carpetaSalida, razonSocial,
+      puntoVenta, condicionIVAEmisor, domicilio, ingresosBrutos, inicioActividades,
+    } = req.body || {};
     const patch = {};
     if (cuit !== undefined) patch.cuit = String(cuit).replace(/\D/g, '');
     if (production !== undefined) patch.production = Boolean(production);
     if (accessToken !== undefined) patch.accessToken = String(accessToken);
     if (carpetaSalida !== undefined) patch.carpetaSalida = String(carpetaSalida);
     if (razonSocial !== undefined) patch.razonSocial = String(razonSocial);
+    if (puntoVenta !== undefined) patch.puntoVenta = Number(puntoVenta) || 1;
+    if (condicionIVAEmisor !== undefined) patch.condicionIVAEmisor = String(condicionIVAEmisor);
+    if (domicilio !== undefined) patch.domicilio = String(domicilio);
+    if (ingresosBrutos !== undefined) patch.ingresosBrutos = String(ingresosBrutos);
+    if (inicioActividades !== undefined) patch.inicioActividades = String(inicioActividades);
     const next = await saveSettings(patch);
     res.json({ ok: true, cuit: next.cuit, production: next.production });
   } catch (err) {

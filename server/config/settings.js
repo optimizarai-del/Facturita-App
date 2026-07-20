@@ -11,6 +11,10 @@ const DEFAULTS = {
   accessToken: '', // solo necesario en producción
   puntoVenta: 1, // punto de venta AFIP
   razonSocial: '', // razón social del emisor (para el PDF)
+  condicionIVAEmisor: 'Responsable Monotributo', // condición frente al IVA del emisor
+  domicilio: '', // domicilio comercial del emisor (para el PDF)
+  ingresosBrutos: '', // N° de Ingresos Brutos (opcional)
+  inicioActividades: '', // fecha de inicio de actividades (opcional)
   cert: '', // certificado X.509 (PEM) — generado con CreateCert
   key: '', // clave privada (PEM) — generada con CreateCert
   certAlias: '', // alias del certificado en AFIP
