@@ -19,6 +19,11 @@ const DEFAULTS = {
   key: '', // clave privada (PEM) — generada con CreateCert
   certAlias: '', // alias del certificado en AFIP
   carpetaSalida: '',
+  // Google Drive (OAuth 2.0)
+  driveClientId: '',
+  driveClientSecret: '',
+  driveRefreshToken: '', // se obtiene tras autorizar una vez
+  driveFolderId: '', // carpeta padre en Drive (opcional; vacío = raíz)
 };
 
 // Lee la config local (o devuelve defaults si no existe todavía).

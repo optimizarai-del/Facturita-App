@@ -9,6 +9,7 @@ import { readFacturasFromBuffer } from './services/reader.js';
 import { procesarFacturas } from './services/facturador.js';
 import { guardarResultados, buildResultadosWorkbook } from './services/exporter.js';
 import { generarPDFs } from './services/pdf.js';
+import { getAuthUrl, exchangeCode, subirCarpetaADrive } from './services/drive.js';
 
 // Guardamos el último resultado en memoria para permitir re-descargar el Excel.
 let ultimoResultado = null;
@@ -58,6 +59,10 @@ app.get('/api/config', async (req, res) => {
       domicilio: s.domicilio,
       ingresosBrutos: s.ingresosBrutos,
       inicioActividades: s.inicioActividades,
+      driveClientId: s.driveClientId,
+      tieneDriveSecret: Boolean(s.driveClientSecret),
+      driveConectado: Boolean(s.driveRefreshToken),
+      driveFolderId: s.driveFolderId,
       tieneAccessToken: Boolean(s.accessToken),
       tieneCertificado: Boolean(s.cert && s.key),
       certAlias: s.certAlias,
@@ -74,6 +79,7 @@ app.post('/api/config', async (req, res) => {
     const {
       cuit, production, accessToken, carpetaSalida, razonSocial,
       puntoVenta, condicionIVAEmisor, domicilio, ingresosBrutos, inicioActividades,
+      driveClientId, driveClientSecret, driveFolderId,
     } = req.body || {};
     const patch = {};
     if (cuit !== undefined) patch.cuit = String(cuit).replace(/\D/g, '');
@@ -86,6 +92,9 @@ app.post('/api/config', async (req, res) => {
     if (domicilio !== undefined) patch.domicilio = String(domicilio);
     if (ingresosBrutos !== undefined) patch.ingresosBrutos = String(ingresosBrutos);
     if (inicioActividades !== undefined) patch.inicioActividades = String(inicioActividades);
+    if (driveClientId !== undefined) patch.driveClientId = String(driveClientId).trim();
+    if (driveClientSecret !== undefined) patch.driveClientSecret = String(driveClientSecret).trim();
+    if (driveFolderId !== undefined) patch.driveFolderId = String(driveFolderId).trim();
     const next = await saveSettings(patch);
     res.json({ ok: true, cuit: next.cuit, production: next.production });
   } catch (err) {
@@ -123,6 +132,40 @@ app.post('/api/afip/cert', async (req, res) => {
   }
 });
 
+// Milestone 5: obtener la URL de autorización de Google Drive
+app.get('/api/drive/auth-url', async (req, res) => {
+  try {
+    const url = await getAuthUrl();
+    res.json({ url });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Milestone 5: callback OAuth de Google (guarda el refresh token)
+app.get('/api/drive/callback', async (req, res) => {
+  const { code, error } = req.query;
+  if (error) {
+    return res.send(paginaCierre(`No se autorizó el acceso: ${error}`, false));
+  }
+  try {
+    await exchangeCode(String(code));
+    res.send(paginaCierre('✅ Google Drive conectado. Ya podés cerrar esta pestaña.', true));
+  } catch (err) {
+    res.send(paginaCierre(`Error al conectar: ${err.message}`, false));
+  }
+});
+
+function paginaCierre(msg, ok) {
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Google Drive</title>
+    <style>body{font-family:system-ui;display:grid;place-items:center;height:100vh;margin:0;background:#fbfbfd}
+    .c{text-align:center;padding:32px;border-radius:16px;background:#fff;box-shadow:0 8px 30px rgba(0,0,0,.08);max-width:420px}
+    .m{color:${ok ? '#1d7a3d' : '#c0362c'};font-size:1.05rem}</style></head>
+    <body><div class="c"><div class="m">${msg}</div></div>
+    <script>try{window.opener&&window.opener.postMessage('drive-'+${ok},'*')}catch(e){}</script>
+    </body></html>`;
+}
+
 // Milestone 3: subir Excel y emitir las facturas
 app.post('/api/facturar', upload.single('archivo'), async (req, res) => {
   try {
@@ -157,6 +200,17 @@ app.post('/api/facturar', upload.single('archivo'), async (req, res) => {
       } catch (e) {
         console.error('Error generando PDFs:', e.message);
         result.pdf = { generados: 0, errores: [{ error: e.message }] };
+      }
+    }
+
+    // Subir la carpeta a Google Drive (si se pidió y está conectado).
+    const quiereDrive = String(req.body?.subirDrive ?? 'false') === 'true';
+    if (quiereDrive && carpeta) {
+      try {
+        result.drive = await subirCarpetaADrive(carpeta);
+      } catch (e) {
+        console.error('Error subiendo a Drive:', e.message);
+        result.drive = { error: e.message };
       }
     }
 

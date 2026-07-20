@@ -387,6 +387,16 @@
           Generar PDF de cada factura
         </label>
       </div>
+      <div class="row" style="margin-top:12px;">
+        <label class="toggle">
+          <span class="switch">
+            <input type="checkbox" id="subir-drive" />
+            <span class="slider"></span>
+          </span>
+          Subir resultados a Google Drive
+          <span id="drive-badge-mini" class="pill err" style="margin-left:6px;">no conectado</span>
+        </label>
+      </div>
       <div class="row">
         <button type="button" class="btn btn-primary" id="btn-facturar" disabled>Generar facturas</button>
       </div>
@@ -407,6 +417,37 @@
           <tbody></tbody>
         </table>
       </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <span class="step-num">☁︎</span>
+        <h3>Google Drive (opcional)</h3>
+        <span id="drive-estado" class="pill err">no conectado</span>
+      </div>
+      <p class="desc">Conectá tu Google Drive para que los resultados se suban automáticamente.
+        Necesitás crear credenciales OAuth en
+        <a class="inline" href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Google Cloud Console</a>
+        (tipo "Aplicación web", con URI de redirección <code>http://localhost:3000/api/drive/callback</code>).</p>
+
+      <div class="grid2">
+        <div>
+          <label for="drive-client-id">Client ID</label>
+          <input type="text" id="drive-client-id" placeholder="xxxx.apps.googleusercontent.com" />
+        </div>
+        <div>
+          <label for="drive-secret">Client Secret</label>
+          <input type="password" id="drive-secret" placeholder="Tu client secret" autocomplete="off" />
+        </div>
+      </div>
+      <label for="drive-folder">ID de carpeta destino en Drive (opcional)</label>
+      <input type="text" id="drive-folder" placeholder="Vacío = raíz de tu Drive" />
+
+      <div class="row">
+        <button type="button" class="btn btn-ghost" id="btn-drive-guardar">Guardar credenciales</button>
+        <button type="button" class="btn btn-primary" id="btn-drive-conectar">Conectar Google Drive</button>
+      </div>
+      <div id="drive-status" class="status"></div>
     </div>
   </main>
 
@@ -438,6 +479,10 @@
         if (c.tieneAccessToken) $('token').placeholder = '•••••• (guardado)';
         if (c.certAlias) $('alias').value = c.certAlias;
         if (c.carpetaSalida) $('carpeta').value = c.carpetaSalida;
+        if (c.driveClientId) $('drive-client-id').value = c.driveClientId;
+        if (c.tieneDriveSecret) $('drive-secret').placeholder = '•••••• (guardado)';
+        if (c.driveFolderId) $('drive-folder').value = c.driveFolderId;
+        setDriveEstado(c.driveConectado);
         setCertEstado(c.tieneCertificado);
         $('produccion').checked = Boolean(c.production);
         updateBadge();
@@ -538,6 +583,60 @@
     }
     $('btn-cert').addEventListener('click', generarCert);
 
+    // ---- Google Drive ----
+    function setDriveEstado(ok) {
+      ['drive-estado', 'drive-badge-mini'].forEach((id) => {
+        const el = $(id);
+        el.className = 'pill ' + (ok ? 'ok' : 'err');
+        el.textContent = ok ? 'conectado ✅' : 'no conectado';
+      });
+      if ($('drive-badge-mini')) $('drive-badge-mini').style.marginLeft = '6px';
+    }
+    function setDriveStatus(kind, msg) {
+      const el = $('drive-status');
+      el.className = 'status ' + kind;
+      el.innerHTML = msg;
+    }
+    async function guardarDrive() {
+      const body = {
+        driveClientId: $('drive-client-id').value.trim(),
+        driveFolderId: $('drive-folder').value.trim(),
+      };
+      const secret = $('drive-secret').value.trim();
+      if (secret) body.driveClientSecret = secret;
+      const r = await fetch('/api/config', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (r.ok) setDriveStatus('ok', '✅ Credenciales guardadas.');
+      else setDriveStatus('err', 'No se pudieron guardar.');
+    }
+    async function conectarDrive() {
+      await guardarDrive();
+      setDriveStatus('loading', '⏳ Abriendo autorización de Google…');
+      try {
+        const r = await fetch('/api/drive/auth-url');
+        const d = await r.json();
+        if (!r.ok) { setDriveStatus('err', `❌ ${d.error}`); return; }
+        const popup = window.open(d.url, 'drive-oauth', 'width=520,height=640');
+        // Escuchar el aviso de la ventana de callback
+        const onMsg = (ev) => {
+          if (String(ev.data).startsWith('drive-')) {
+            const ok = ev.data === 'drive-true';
+            setDriveEstado(ok);
+            setDriveStatus(ok ? 'ok' : 'err', ok ? '✅ Google Drive conectado.' : '❌ No se pudo conectar.');
+            window.removeEventListener('message', onMsg);
+            if (popup) popup.close();
+          }
+        };
+        window.addEventListener('message', onMsg);
+      } catch (e) {
+        setDriveStatus('err', '❌ Error al iniciar la autorización.');
+      }
+    }
+    $('btn-drive-guardar').addEventListener('click', guardarDrive);
+    $('btn-drive-conectar').addEventListener('click', conectarDrive);
+
     // ---- Paso 3: facturación ----
     function setFactStatus(kind, msg) {
       const el = $('facturar-status');
@@ -594,6 +693,7 @@
       const fd = new FormData();
       fd.append('archivo', f);
       fd.append('generarPdf', $('generar-pdf').checked ? 'true' : 'false');
+      fd.append('subirDrive', $('subir-drive').checked ? 'true' : 'false');
       setFactStatus('loading', '⏳ Emitiendo facturas en AFIP… esto puede tardar unos segundos.');
       $('btn-facturar').disabled = true;
       try {
@@ -606,9 +706,21 @@
         // Mostrar descarga y carpeta donde se guardó.
         $('descarga').hidden = false;
         const pdfTxt = data.pdf ? ` · ${data.pdf.generados} PDF(s) generado(s)` : '';
-        $('carpeta-info').textContent = data.carpeta
-          ? `Guardado en: ${data.carpeta}${pdfTxt}`
-          : (data.carpetaError ? `No se pudo guardar en disco: ${data.carpetaError}` : '');
+        let driveTxt = '';
+        if (data.drive) {
+          driveTxt = data.drive.error
+            ? ` · ⚠️ Drive: ${data.drive.error}`
+            : ` · ☁︎ ${data.drive.subidos} archivo(s) en Drive`;
+        }
+        const info = $('carpeta-info');
+        if (data.carpeta) {
+          info.innerHTML = `Guardado en: ${data.carpeta}${pdfTxt}${driveTxt}`;
+          if (data.drive && data.drive.link) {
+            info.innerHTML += ` — <a class="inline" href="${data.drive.link}" target="_blank" rel="noopener">abrir en Drive</a>`;
+          }
+        } else {
+          info.textContent = data.carpetaError ? `No se pudo guardar en disco: ${data.carpetaError}` : '';
+        }
         renderResultados(data);
       } catch (e) {
         setFactStatus('err', '❌ Error de red al facturar.');
