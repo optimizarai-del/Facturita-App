@@ -5,295 +5,239 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>FacturitaApp</title>
   <style>
+    /* ===== Tema oscuro (default) ===== */
     :root {
-      --blue: #0071e3;
-      --blue-hover: #0077ed;
-      --ink: #1d1d1f;
-      --gray: #86868b;
-      --line: #d2d2d7;
-      --bg: #fbfbfd;
-      --card: #ffffff;
-      --ok-bg: #e8f8ee;   --ok-ink: #1d7a3d;
-      --err-bg: #fdeceb;  --err-ink: #c0362c;
-      --load-bg: #f2f2f4; --load-ink: #6e6e73;
+      --bg: #0b0d12; --panel: #151821; --elev: #0f1218;
+      --text: #e7e9ee; --text2: #9aa3b2; --muted: #6b7280;
+      --border: #232833; --border2: #2f3644;
+      --accent: #17c07f; --accent-ink: #04231a; --accent-hover: #1ed08a;
+      --ok-bg: #0f2a20; --ok-ink: #4fe0a6; --ok-border: #17603f;
+      --err-bg: #2a1416; --err-ink: #ff7a7a; --err-border: #7a2b2b;
+      --load-bg: #1c2029; --load-ink: #9aa3b2;
+      --shadow: 0 10px 40px rgba(0,0,0,0.4);
     }
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --ink: #f5f5f7; --gray: #a1a1a6; --line: #3a3a3c;
-        --bg: #000000; --card: #1c1c1e;
-        --ok-bg: #12331f; --ok-ink: #6ee7a0;
-        --err-bg: #3a1512; --err-ink: #ff8a80;
-        --load-bg: #2a2a2c; --load-ink: #a1a1a6;
-      }
+    /* ===== Tema claro ===== */
+    :root[data-theme="light"] {
+      --bg: #eef2ef; --panel: #ffffff; --elev: #f6f9f7;
+      --text: #17211c; --text2: #5a6470; --muted: #8a93a3;
+      --border: #e2e8e4; --border2: #cfd8d2;
+      --accent: #0ea968; --accent-ink: #ffffff; --accent-hover: #0bbd73;
+      --ok-bg: #e6f7ef; --ok-ink: #0f7a4d; --ok-border: #a8e0c4;
+      --err-bg: #fdecec; --err-ink: #c0362c; --err-border: #f0b6b6;
+      --load-bg: #eef2f0; --load-ink: #5a6470;
+      --shadow: 0 8px 30px rgba(0,0,0,0.08);
     }
     * { box-sizing: border-box; }
     html { -webkit-font-smoothing: antialiased; }
     body {
-      margin: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", system-ui, sans-serif;
-      background: var(--bg);
-      color: var(--ink);
-      min-height: 100vh;
-      letter-spacing: -0.01em;
+      margin: 0; min-height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      background: var(--bg); color: var(--text);
+      letter-spacing: -0.01em; transition: background .2s, color .2s;
     }
+    .wrap { max-width: 640px; margin: 0 auto; padding: 20px 18px 60px; }
 
-    /* Header frosted glass */
-    header {
-      position: sticky; top: 0; z-index: 10;
-      backdrop-filter: saturate(180%) blur(20px);
-      -webkit-backdrop-filter: saturate(180%) blur(20px);
-      background: color-mix(in srgb, var(--bg) 72%, transparent);
-      border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
-      text-align: center;
-      padding: 16px 24px;
+    /* Header */
+    header { display: flex; align-items: center; gap: 10px; margin-bottom: 24px; }
+    .logo {
+      width: 32px; height: 32px; border-radius: 9px;
+      background: var(--accent); color: var(--accent-ink);
+      display: grid; place-items: center; font-size: 18px; font-weight: 700;
     }
-    header h1 {
-      margin: 0; font-size: 1.15rem; font-weight: 600;
-      display: flex; align-items: center; justify-content: center; gap: 8px;
-    }
-
-    /* Hero */
-    .hero { text-align: center; padding: 56px 24px 24px; }
-    .hero h2 {
-      margin: 0; font-size: 2.6rem; font-weight: 700; line-height: 1.08;
-      letter-spacing: -0.03em;
-    }
-    .hero p { margin: 12px auto 0; max-width: 460px; color: var(--gray); font-size: 1.12rem; }
-
-    main { width: 100%; max-width: 680px; margin: 0 auto; padding: 8px 22px 80px; }
-
-    .card {
-      background: var(--card);
-      border-radius: 20px;
-      padding: 28px;
-      margin-bottom: 20px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 8px 30px rgba(0,0,0,0.05);
-      border: 1px solid color-mix(in srgb, var(--line) 40%, transparent);
-    }
-    .card-head { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
-    .step-num {
-      flex: 0 0 auto;
-      width: 30px; height: 30px;
-      background: var(--blue); color: #fff;
-      border-radius: 50%;
-      display: grid; place-items: center;
-      font-size: 0.9rem; font-weight: 600;
-    }
-    .card h3 { margin: 0; font-size: 1.28rem; font-weight: 600; }
-    .card .desc { margin: 4px 0 20px; color: var(--gray); font-size: 0.98rem; line-height: 1.5; }
-    .card a.inline { color: var(--blue); text-decoration: none; }
-    .card a.inline:hover { text-decoration: underline; }
-
-    label {
-      display: block; font-size: 0.82rem; font-weight: 600;
-      color: var(--gray); margin: 18px 0 7px;
-    }
-    input[type="text"] {
-      width: 100%; padding: 13px 15px;
-      border: 1px solid var(--line); border-radius: 12px;
-      font-size: 1rem; background: var(--bg); color: var(--ink);
-      transition: border-color .15s, box-shadow .15s;
-      font-family: inherit;
-    }
-    input[type="text"]:focus {
-      outline: none; border-color: var(--blue);
-      box-shadow: 0 0 0 4px color-mix(in srgb, var(--blue) 18%, transparent);
-    }
-
-    .btn {
-      appearance: none; border: none; cursor: pointer;
-      font-family: inherit; font-size: 1rem; font-weight: 500;
-      padding: 12px 24px; border-radius: 980px;
-      transition: background .2s, transform .1s, opacity .2s;
-    }
-    .btn:active { transform: scale(0.97); }
-    .btn-primary { background: var(--blue); color: #fff; }
-    .btn-primary:hover { background: var(--blue-hover); }
-    .btn-ghost {
-      background: transparent; color: var(--blue);
-      border: 1px solid color-mix(in srgb, var(--blue) 45%, transparent);
-    }
-    .btn-ghost:hover { background: color-mix(in srgb, var(--blue) 8%, transparent); }
-    .btn:disabled { opacity: .45; cursor: not-allowed; transform: none; }
-
-    .row { display: flex; gap: 12px; align-items: center; margin-top: 22px; flex-wrap: wrap; }
-    .toggle { display: flex; align-items: center; gap: 9px; font-size: 0.95rem; color: var(--ink); cursor: pointer; }
-
-    /* iOS-style switch */
-    .switch { position: relative; width: 46px; height: 28px; flex: 0 0 auto; }
-    .switch input { opacity: 0; width: 0; height: 0; }
-    .slider {
-      position: absolute; inset: 0; cursor: pointer;
-      background: var(--line); border-radius: 980px; transition: background .25s;
-    }
-    .slider::before {
-      content: ""; position: absolute; height: 24px; width: 24px; left: 2px; top: 2px;
-      background: #fff; border-radius: 50%; transition: transform .25s;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
-    }
-    .switch input:checked + .slider { background: #34c759; }
-    .switch input:checked + .slider::before { transform: translateX(18px); }
-
+    .brand { font-weight: 600; font-size: 1.05rem; }
     .badge {
-      font-size: 0.74rem; font-weight: 600; padding: 4px 11px; border-radius: 980px;
-      background: color-mix(in srgb, var(--blue) 12%, transparent); color: var(--blue);
-      margin-left: auto;
+      font-size: 0.72rem; font-weight: 600; padding: 4px 11px; border-radius: 20px;
+      background: var(--accent); color: var(--accent-ink);
     }
-
-    .status {
-      margin-top: 18px; font-size: 0.94rem; line-height: 1.5;
-      padding: 13px 16px; border-radius: 13px; display: none;
+    .spacer { margin-left: auto; }
+    .theme-btn {
+      background: var(--panel); border: 1px solid var(--border2); color: var(--text);
+      width: 38px; height: 38px; border-radius: 10px; cursor: pointer;
+      display: grid; place-items: center; font-size: 1.05rem; transition: background .15s;
     }
-    .status small { opacity: .8; }
-    .status.ok { background: var(--ok-bg); color: var(--ok-ink); display: block; }
-    .status.err { background: var(--err-bg); color: var(--err-ink); display: block; }
-    .status.loading { background: var(--load-bg); color: var(--load-ink); display: block; }
+    .theme-btn:hover { background: var(--elev); }
 
-    .soon { color: var(--gray); font-size: 0.95rem; margin: 0; }
-    .card.disabled { opacity: .55; }
-
-    /* Resumen */
-    .resumen { display: flex; gap: 12px; margin-top: 20px; flex-wrap: wrap; }
-    .chip {
-      flex: 1 1 120px; text-align: center;
-      background: var(--bg); border: 1px solid var(--line);
-      border-radius: 14px; padding: 14px 10px;
+    /* Stepper rail */
+    .rail { display: flex; align-items: center; margin-bottom: 6px; }
+    .dot {
+      width: 28px; height: 28px; border-radius: 50%; flex: 0 0 auto;
+      display: grid; place-items: center; font-size: 0.82rem; font-weight: 600;
+      background: var(--elev); color: var(--text2); border: 1px solid var(--border2);
+      transition: all .2s;
     }
-    .chip .num { font-size: 1.8rem; font-weight: 700; line-height: 1; }
-    .chip .lbl { font-size: 0.78rem; color: var(--gray); margin-top: 5px; }
-    .chip.ok .num { color: var(--ok-ink); }
-    .chip.err .num { color: var(--err-ink); }
+    .dot.done { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+    .dot.active {
+      background: var(--accent); color: var(--accent-ink); border-color: var(--accent);
+      box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent);
+    }
+    .bar { flex: 1; height: 2px; background: var(--border2); margin: 0 4px; }
+    .bar.done { background: var(--accent); }
+    .labels { display: flex; justify-content: space-between; font-size: 0.72rem; color: var(--muted); margin-bottom: 24px; padding: 0 2px; }
+    .labels span.on { color: var(--accent); font-weight: 600; }
 
-    /* Tabla */
-    .tabla-wrap { margin-top: 18px; overflow-x: auto; border-radius: 14px; border: 1px solid var(--line); }
-    table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
-    th, td { padding: 11px 13px; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
-    th { background: var(--bg); font-weight: 600; color: var(--gray); font-size: 0.78rem; text-transform: uppercase; letter-spacing: .03em; }
-    tbody tr:last-child td { border-bottom: none; }
-    td.detalle { white-space: normal; min-width: 200px; }
-    .pill { font-size: 0.76rem; font-weight: 600; padding: 3px 10px; border-radius: 980px; }
-    .pill.ok { background: var(--ok-bg); color: var(--ok-ink); }
-    .pill.err { background: var(--err-bg); color: var(--err-ink); }
+    /* Panel de paso */
+    .panel {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 16px;
+      padding: 24px; box-shadow: var(--shadow);
+    }
+    .step { display: none; }
+    .step.active { display: block; }
+    .step h2 { margin: 0 0 4px; font-size: 1.35rem; font-weight: 600; }
+    .step .sub { margin: 0 0 20px; color: var(--text2); font-size: 0.95rem; line-height: 1.5; }
+    .step h3 { margin: 22px 0 10px; font-size: 1rem; font-weight: 600; }
 
-    /* Caja de datos del emisor */
-    .emisor-box {
-      margin-top: 22px; padding: 18px; border-radius: 14px;
-      background: var(--bg); border: 1px solid var(--line);
+    label { display: block; font-size: 0.8rem; font-weight: 600; color: var(--text2); margin: 16px 0 6px; }
+    input[type="text"], input[type="password"], select {
+      width: 100%; padding: 13px 15px; border: 1px solid var(--border2); border-radius: 12px;
+      font-size: 1rem; background: var(--elev); color: var(--text); font-family: inherit;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    select { cursor: pointer; }
+    input:focus, select:focus {
+      outline: none; border-color: var(--accent);
+      box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 20%, transparent);
     }
     .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
     @media (max-width: 480px) { .grid2 { grid-template-columns: 1fr; } }
-    select {
-      width: 100%; padding: 13px 15px;
-      border: 1px solid var(--line); border-radius: 12px;
-      font-size: 1rem; background: var(--card); color: var(--ink);
-      font-family: inherit; cursor: pointer;
-    }
-    select:focus {
-      outline: none; border-color: var(--blue);
-      box-shadow: 0 0 0 4px color-mix(in srgb, var(--blue) 18%, transparent);
-    }
 
-    /* Caja de certificado */
-    .cert-box {
-      margin-top: 22px; padding: 18px; border-radius: 14px;
-      background: var(--bg); border: 1px solid var(--line);
+    .btn {
+      appearance: none; border: none; cursor: pointer; font-family: inherit;
+      font-size: 0.98rem; font-weight: 600; padding: 12px 22px; border-radius: 24px;
+      transition: background .18s, transform .1s, opacity .2s;
     }
-    .cert-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-    .pill.loading {
-      background: var(--load-bg); color: var(--load-ink);
-      display: inline-flex; align-items: center; gap: 7px;
+    .btn:active { transform: scale(0.97); }
+    .btn-primary { background: var(--accent); color: var(--accent-ink); }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-ghost { background: transparent; color: var(--text); border: 1px solid var(--border2); }
+    .btn-ghost:hover { background: var(--elev); }
+    .btn:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+    .row { display: flex; gap: 12px; align-items: center; margin-top: 18px; flex-wrap: wrap; }
+
+    /* Switch */
+    .toggle { display: flex; align-items: center; gap: 10px; font-size: 0.92rem; color: var(--text); cursor: pointer; }
+    .switch { position: relative; width: 44px; height: 26px; flex: 0 0 auto; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; inset: 0; cursor: pointer; background: var(--border2); border-radius: 20px; transition: background .25s; }
+    .slider::before { content: ""; position: absolute; height: 20px; width: 20px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: transform .25s; }
+    .switch input:checked + .slider { background: var(--accent); }
+    .switch input:checked + .slider::before { transform: translateX(18px); }
+
+    /* Zona de upload */
+    .drop {
+      border: 1.5px dashed var(--border2); border-radius: 14px; padding: 26px; text-align: center;
+      background: var(--elev); cursor: pointer; transition: border-color .15s, background .15s;
     }
-    .spinner {
-      width: 12px; height: 12px; border-radius: 50%;
-      border: 2px solid color-mix(in srgb, var(--load-ink) 35%, transparent);
-      border-top-color: var(--load-ink);
-      animation: spin 0.7s linear infinite;
-    }
+    .drop:hover { border-color: var(--accent); }
+    .drop .ico { font-size: 1.8rem; }
+    .drop .hint { font-size: 0.9rem; margin-top: 8px; }
+    .drop .file { font-size: 0.82rem; color: var(--accent); margin-top: 4px; min-height: 1em; }
+    .link-accent { color: var(--accent); text-decoration: none; }
+    .link-accent:hover { text-decoration: underline; }
+
+    /* Estados y pills */
+    .status { margin-top: 16px; font-size: 0.92rem; line-height: 1.5; padding: 12px 15px; border-radius: 12px; display: none; }
+    .status.ok { background: var(--ok-bg); color: var(--ok-ink); display: block; }
+    .status.err { background: var(--err-bg); color: var(--err-ink); display: block; }
+    .status.loading { background: var(--load-bg); color: var(--load-ink); display: block; }
+    .pill { font-size: 0.74rem; font-weight: 600; padding: 4px 11px; border-radius: 20px; display: inline-flex; align-items: center; gap: 6px; }
+    .pill.ok { background: var(--ok-bg); color: var(--ok-ink); }
+    .pill.err { background: var(--err-bg); color: var(--err-ink); }
+    .pill.loading { background: var(--load-bg); color: var(--load-ink); }
+    .spinner { width: 12px; height: 12px; border-radius: 50%; border: 2px solid color-mix(in srgb, var(--load-ink) 35%, transparent); border-top-color: var(--load-ink); animation: spin .7s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
-    .aviso {
-      font-size: 0.85rem; line-height: 1.5; margin: 12px 0 0;
-      padding: 10px 12px; border-radius: 10px;
-      background: color-mix(in srgb, #ff9f0a 14%, transparent);
-      color: color-mix(in srgb, #b26a00 90%, var(--ink));
-    }
-    @media (prefers-color-scheme: dark) {
-      .aviso { color: #ffd479; }
-    }
-    input[type="password"] {
-      width: 100%; padding: 13px 15px;
-      border: 1px solid var(--line); border-radius: 12px;
-      font-size: 1rem; background: var(--card); color: var(--ink);
-      font-family: inherit;
-    }
-    input[type="password"]:focus {
-      outline: none; border-color: var(--blue);
-      box-shadow: 0 0 0 4px color-mix(in srgb, var(--blue) 18%, transparent);
-    }
 
-    /* ---- Mobile ---- */
-    @media (max-width: 560px) {
-      .hero { padding: 36px 20px 16px; }
-      .hero h2 { font-size: 2rem; }
-      .hero p { font-size: 1rem; }
-      main { padding: 4px 16px 64px; }
-      .card { padding: 22px 20px; border-radius: 18px; }
-      .card h3 { font-size: 1.15rem; }
-      .badge { margin-left: 0; }
-      .card-head { flex-wrap: wrap; }
-      /* Botones full-width y buen target táctil */
-      .row .btn { flex: 1 1 100%; padding: 14px 24px; }
-      a[download] { display: block; }
-      a[download] .btn { width: 100%; }
+    .box-inner { margin-top: 22px; padding: 18px; border-radius: 14px; background: var(--elev); border: 1px solid var(--border); }
+    .box-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .aviso {
+      font-size: 0.84rem; line-height: 1.5; margin: 12px 0 0; padding: 10px 13px; border-radius: 10px;
+      background: color-mix(in srgb, #ffb020 16%, transparent); color: #ffcf7a;
     }
-    /* Tap targets cómodos en cualquier touch */
-    @media (hover: none) {
-      .btn { min-height: 44px; }
-    }
+    :root[data-theme="light"] .aviso { color: #8a5a00; }
+    code { background: var(--elev); border: 1px solid var(--border); padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+    .soon { color: var(--muted); font-size: 0.85rem; }
+    .inline { color: var(--accent); text-decoration: none; }
+    .inline:hover { text-decoration: underline; }
+
+    /* Resumen (chips) */
+    .resumen { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; margin-top: 20px; }
+    .chip { text-align: center; background: var(--elev); border: 1px solid var(--border); border-radius: 12px; padding: 14px 8px; }
+    .chip .num { font-size: 1.7rem; font-weight: 700; line-height: 1; }
+    .chip .lbl { font-size: 0.76rem; color: var(--muted); margin-top: 5px; }
+    .chip.ok { background: var(--ok-bg); border-color: var(--ok-border); }
+    .chip.ok .num, .chip.ok .lbl { color: var(--ok-ink); }
+    .chip.err { background: var(--err-bg); border-color: var(--err-border); }
+    .chip.err .num, .chip.err .lbl { color: var(--err-ink); }
+
+    /* Tabla */
+    .tabla-wrap { margin-top: 18px; overflow-x: auto; border-radius: 12px; border: 1px solid var(--border); }
+    table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+    th, td { padding: 11px 13px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; color: var(--text); }
+    th { background: var(--elev); font-weight: 600; color: var(--text2); font-size: 0.74rem; text-transform: uppercase; letter-spacing: .03em; }
+    tbody tr:last-child td { border-bottom: none; }
+    td.detalle { white-space: normal; min-width: 200px; }
+
+    /* Footer nav */
+    .nav { display: flex; align-items: center; gap: 12px; margin-top: 20px; }
+    .nav .count { flex: 1; text-align: center; font-size: 0.8rem; color: var(--muted); }
   </style>
 </head>
 <body>
-  <header>
-    <h1>🧾 FacturitaApp</h1>
-  </header>
+  <div class="wrap">
+    <header>
+      <span class="logo">🧾</span>
+      <span class="brand">FacturitaApp</span>
+      <span id="ambiente-badge" class="badge">homologación</span>
+      <span class="spacer"></span>
+      <button type="button" class="theme-btn" id="btn-theme" title="Cambiar tema" aria-label="Cambiar tema">🌙</button>
+    </header>
 
-  <div class="hero">
-    <h2>Facturá desde un Excel.</h2>
-    <p>Cargá tus datos, conectá con AFIP y generá tus comprobantes en segundos.</p>
-  </div>
-
-  <main>
-    <div class="card">
-      <div class="card-head">
-        <span class="step-num">1</span>
-        <h3>Descargá la plantilla</h3>
-      </div>
-      <p class="desc">Bajá el modelo de Excel, borrá la fila de ejemplo y cargá una fila por cada factura que quieras emitir.</p>
-      <a href="/api/plantilla" download>
-        <button type="button" class="btn btn-primary">Descargar plantilla</button>
-      </a>
+    <div class="rail" id="rail">
+      <span class="dot active" data-dot="0">1</span>
+      <span class="bar" data-bar="0"></span>
+      <span class="dot" data-dot="1">2</span>
+      <span class="bar" data-bar="1"></span>
+      <span class="dot" data-dot="2">3</span>
+      <span class="bar" data-bar="2"></span>
+      <span class="dot" data-dot="3">4</span>
+    </div>
+    <div class="labels" id="labels">
+      <span class="on">Conexión</span><span>Emisor</span><span>Generar</span><span>Drive</span>
     </div>
 
-    <div class="card">
-      <div class="card-head">
-        <span class="step-num">2</span>
-        <h3>Conectá con AFIP</h3>
-        <span id="ambiente-badge" class="badge">homologación</span>
-      </div>
-      <p class="desc">Ingresá tu CUIT y tu <b>access token</b> de AFIP SDK. El token es gratis: crealo en
-        <a class="inline" href="https://app.afipsdk.com/" target="_blank" rel="noopener">app.afipsdk.com</a>.
-        No es tu clave fiscal.</p>
+    <div class="panel">
+      <!-- PASO 1: Conexión AFIP -->
+      <section class="step active" data-step="0">
+        <h2>Conectá con AFIP</h2>
+        <p class="sub">Ingresá tu CUIT y tu access token de AFIP SDK. El token es gratis: crealo en
+          <a class="inline" href="https://app.afipsdk.com/" target="_blank" rel="noopener">app.afipsdk.com</a>. No es tu clave fiscal.</p>
 
-      <label for="razon">Razón social (aparece en el PDF)</label>
-      <input type="text" id="razon" placeholder="Tu nombre o razón social" />
+        <label for="cuit">CUIT</label>
+        <input type="text" id="cuit" placeholder="27319422590" inputmode="numeric" />
 
-      <label for="cuit">CUIT</label>
-      <input type="text" id="cuit" placeholder="27319422590" inputmode="numeric" />
+        <label for="token">Access token de AFIP SDK</label>
+        <input type="text" id="token" placeholder="Pegá tu access token" />
 
-      <label for="token">Access token de AFIP SDK</label>
-      <input type="text" id="token" placeholder="Pegá tu access token" />
+        <div class="row">
+          <label class="toggle">
+            <span class="switch"><input type="checkbox" id="produccion" /><span class="slider"></span></span>
+            Usar producción (facturas reales)
+          </label>
+        </div>
+        <div class="row">
+          <button type="button" class="btn btn-ghost" id="btn-guardar">Guardar</button>
+          <button type="button" class="btn btn-primary" id="btn-test">Probar conexión</button>
+        </div>
+        <div id="afip-status" class="status"></div>
+      </section>
 
-      <div class="emisor-box">
-        <b>Datos del emisor</b> <span class="soon">(aparecen en el PDF)</span>
+      <!-- PASO 2: Datos del emisor + certificado -->
+      <section class="step" data-step="1">
+        <h2>Datos del emisor</h2>
+        <p class="sub">Estos datos aparecen en el PDF de cada factura.</p>
+
+        <label for="razon">Razón social</label>
+        <input type="text" id="razon" placeholder="Tu nombre o razón social" />
+
         <div class="grid2">
           <div>
             <label for="cond-iva">Condición frente al IVA</label>
@@ -320,150 +264,166 @@
             <input type="text" id="inicio" placeholder="01/2020" />
           </div>
         </div>
-      </div>
 
-      <div class="row">
-        <label class="toggle">
-          <span class="switch">
-            <input type="checkbox" id="produccion" />
-            <span class="slider"></span>
-          </span>
-          Usar producción (facturas reales)
-        </label>
-      </div>
+        <div class="box-inner">
+          <div class="box-head">
+            <b>Certificado digital</b>
+            <span id="cert-estado" class="pill err">no configurado</span>
+          </div>
+          <p class="sub" style="margin:8px 0 0;">Para emitir con tu CUIT hace falta un certificado. AFIP SDK lo genera con tu clave fiscal.</p>
+          <p class="aviso">⚠️ Tu clave fiscal se envía a los servidores de afipsdk.com para generar el certificado. Se usa solo en ese momento y no se guarda en la app.</p>
 
-      <div class="row">
-        <button type="button" class="btn btn-ghost" id="btn-guardar">Guardar</button>
-        <button type="button" class="btn btn-primary" id="btn-test">Probar conexión</button>
-      </div>
-
-      <div id="afip-status" class="status"></div>
-
-      <div class="cert-box">
-        <div class="cert-head">
-          <b>Certificado digital</b>
-          <span id="cert-estado" class="pill err">no configurado</span>
+          <label for="clave-fiscal">Clave fiscal de AFIP</label>
+          <input type="password" id="clave-fiscal" placeholder="Tu clave fiscal" autocomplete="off" />
+          <label for="alias">Alias del certificado (opcional)</label>
+          <input type="text" id="alias" placeholder="facturitaapp" />
+          <div class="row">
+            <button type="button" class="btn btn-ghost" id="btn-cert">Generar certificado</button>
+          </div>
+          <div id="cert-status" class="status"></div>
         </div>
-        <p class="desc" style="margin:8px 0 0;">
-          Para emitir con <b>tu</b> CUIT hace falta un certificado. AFIP SDK lo genera con tu clave fiscal.
-        </p>
-        <p class="aviso">⚠️ Tu clave fiscal se envía a los servidores de afipsdk.com para generar el certificado.
-          Se usa solo en ese momento y <b>no se guarda</b> en la app (solo se guarda el certificado resultante).</p>
+      </section>
 
-        <label for="clave-fiscal">Clave fiscal de AFIP</label>
-        <input type="password" id="clave-fiscal" placeholder="Tu clave fiscal" autocomplete="off" />
+      <!-- PASO 3: Generar -->
+      <section class="step" data-step="2">
+        <h2>Generá tus facturas</h2>
+        <p class="sub">Descargá la plantilla, completala con tus facturas y subila. Se emite una por fila.</p>
 
-        <label for="alias">Alias del certificado (opcional)</label>
-        <input type="text" id="alias" placeholder="facturitaapp" />
+        <div class="row" style="margin-top:0;">
+          <a href="/api/plantilla" download>
+            <button type="button" class="btn btn-ghost">⬇️ Descargar plantilla</button>
+          </a>
+        </div>
+
+        <label for="carpeta">Carpeta de destino (opcional)</label>
+        <input type="text" id="carpeta" placeholder="Ej: C:\Users\vos\Desktop\Facturas — vacío = carpeta 'salida'" />
+
+        <input type="file" id="archivo" accept=".xlsx" hidden />
+        <div class="drop" id="drop">
+          <div class="ico">☁️</div>
+          <div class="hint">Elegí tu Excel <span class="link-accent">completado</span></div>
+          <div class="file" id="nombre-archivo"></div>
+        </div>
 
         <div class="row">
-          <button type="button" class="btn btn-ghost" id="btn-cert">Generar certificado</button>
+          <label class="toggle">
+            <span class="switch"><input type="checkbox" id="generar-pdf" checked /><span class="slider"></span></span>
+            Generar PDF de cada factura
+          </label>
         </div>
-        <div id="cert-status" class="status"></div>
+        <div class="row" style="margin-top:12px;">
+          <label class="toggle">
+            <span class="switch"><input type="checkbox" id="subir-drive" /><span class="slider"></span></span>
+            Subir a Google Drive
+            <span id="drive-badge-mini" class="pill err" style="margin-left:6px;">no conectado</span>
+          </label>
+        </div>
+        <div class="row">
+          <button type="button" class="btn btn-primary" id="btn-facturar" disabled>Generar facturas ⚡</button>
+        </div>
+
+        <div id="facturar-status" class="status"></div>
+        <div id="descarga" class="row" hidden>
+          <a href="/api/resultados.xlsx" download>
+            <button type="button" class="btn btn-ghost">⬇️ Descargar Excel de resultados</button>
+          </a>
+          <span id="carpeta-info" class="soon"></span>
+        </div>
+        <div id="resumen" class="resumen" hidden></div>
+        <div id="tabla-wrap" class="tabla-wrap" hidden>
+          <table id="tabla-resultados">
+            <thead><tr><th>Fila</th><th>Cliente</th><th>Tipo</th><th>Importe</th><th>Estado</th><th>Detalle</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- PASO 4: Google Drive -->
+      <section class="step" data-step="3">
+        <div class="box-head" style="margin-bottom:4px;">
+          <h2 style="margin:0;">Google Drive</h2>
+          <span id="drive-estado" class="pill err">no conectado</span>
+        </div>
+        <p class="sub">Opcional. Conectá tu Drive para subir los resultados automáticamente. Creá credenciales OAuth
+          en <a class="inline" href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Google Cloud Console</a>
+          (tipo "Aplicación web", URI de redirección <code>http://localhost:3000/api/drive/callback</code>).</p>
+
+        <div class="grid2">
+          <div>
+            <label for="drive-client-id">Client ID</label>
+            <input type="text" id="drive-client-id" placeholder="xxxx.apps.googleusercontent.com" />
+          </div>
+          <div>
+            <label for="drive-secret">Client Secret</label>
+            <input type="password" id="drive-secret" placeholder="Tu client secret" autocomplete="off" />
+          </div>
+        </div>
+        <label for="drive-folder">ID de carpeta destino en Drive (opcional)</label>
+        <input type="text" id="drive-folder" placeholder="Vacío = raíz de tu Drive" />
+        <div class="row">
+          <button type="button" class="btn btn-ghost" id="btn-drive-guardar">Guardar credenciales</button>
+          <button type="button" class="btn btn-primary" id="btn-drive-conectar">Conectar Google Drive</button>
+        </div>
+        <div id="drive-status" class="status"></div>
+      </section>
+
+      <!-- Navegación -->
+      <div class="nav">
+        <button type="button" class="btn btn-ghost" id="btn-atras" style="visibility:hidden;">← Atrás</button>
+        <span class="count" id="paso-count">Paso 1 de 4</span>
+        <button type="button" class="btn btn-primary" id="btn-siguiente">Siguiente →</button>
       </div>
     </div>
-
-    <div class="card">
-      <div class="card-head">
-        <span class="step-num">3</span>
-        <h3>Subí el Excel y generá</h3>
-      </div>
-      <p class="desc">Subí la plantilla completa. Se emite una factura por fila y vas a ver el resultado de cada una.</p>
-
-      <label for="carpeta">Carpeta de destino (opcional)</label>
-      <input type="text" id="carpeta" placeholder="Ej: C:\Users\vos\Desktop\Facturas — vacío = carpeta 'salida' del proyecto" />
-
-      <input type="file" id="archivo" accept=".xlsx" hidden />
-      <div class="row">
-        <button type="button" class="btn btn-ghost" id="btn-elegir">Elegir archivo…</button>
-        <span id="nombre-archivo" class="soon"></span>
-      </div>
-      <div class="row">
-        <label class="toggle">
-          <span class="switch">
-            <input type="checkbox" id="generar-pdf" checked />
-            <span class="slider"></span>
-          </span>
-          Generar PDF de cada factura
-        </label>
-      </div>
-      <div class="row" style="margin-top:12px;">
-        <label class="toggle">
-          <span class="switch">
-            <input type="checkbox" id="subir-drive" />
-            <span class="slider"></span>
-          </span>
-          Subir resultados a Google Drive
-          <span id="drive-badge-mini" class="pill err" style="margin-left:6px;">no conectado</span>
-        </label>
-      </div>
-      <div class="row">
-        <button type="button" class="btn btn-primary" id="btn-facturar" disabled>Generar facturas</button>
-      </div>
-
-      <div id="facturar-status" class="status"></div>
-      <div id="descarga" class="row" hidden>
-        <a href="/api/resultados.xlsx" download>
-          <button type="button" class="btn btn-primary">⬇️ Descargar Excel de resultados</button>
-        </a>
-        <span id="carpeta-info" class="soon"></span>
-      </div>
-      <div id="resumen" class="resumen" hidden></div>
-      <div id="tabla-wrap" class="tabla-wrap" hidden>
-        <table id="tabla-resultados">
-          <thead>
-            <tr><th>Fila</th><th>Cliente</th><th>Tipo</th><th>Importe</th><th>Estado</th><th>Detalle</th></tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-head">
-        <span class="step-num">☁︎</span>
-        <h3>Google Drive (opcional)</h3>
-        <span id="drive-estado" class="pill err">no conectado</span>
-      </div>
-      <p class="desc">Conectá tu Google Drive para que los resultados se suban automáticamente.
-        Necesitás crear credenciales OAuth en
-        <a class="inline" href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Google Cloud Console</a>
-        (tipo "Aplicación web", con URI de redirección <code>http://localhost:3000/api/drive/callback</code>).</p>
-
-      <div class="grid2">
-        <div>
-          <label for="drive-client-id">Client ID</label>
-          <input type="text" id="drive-client-id" placeholder="xxxx.apps.googleusercontent.com" />
-        </div>
-        <div>
-          <label for="drive-secret">Client Secret</label>
-          <input type="password" id="drive-secret" placeholder="Tu client secret" autocomplete="off" />
-        </div>
-      </div>
-      <label for="drive-folder">ID de carpeta destino en Drive (opcional)</label>
-      <input type="text" id="drive-folder" placeholder="Vacío = raíz de tu Drive" />
-
-      <div class="row">
-        <button type="button" class="btn btn-ghost" id="btn-drive-guardar">Guardar credenciales</button>
-        <button type="button" class="btn btn-primary" id="btn-drive-conectar">Conectar Google Drive</button>
-      </div>
-      <div id="drive-status" class="status"></div>
-    </div>
-  </main>
+  </div>
 
   <script>
     const $ = (id) => document.getElementById(id);
 
-    function setStatus(kind, msg) {
-      const el = $('afip-status');
-      el.className = 'status ' + kind;
-      el.innerHTML = msg;
+    /* ===== Tema ===== */
+    function applyTheme(t) {
+      document.documentElement.setAttribute('data-theme', t);
+      $('btn-theme').textContent = t === 'light' ? '☀️' : '🌙';
     }
+    (function initTheme() {
+      const saved = localStorage.getItem('facturita-theme') || 'dark';
+      applyTheme(saved);
+    })();
+    $('btn-theme').addEventListener('click', () => {
+      const cur = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+      const next = cur === 'light' ? 'dark' : 'light';
+      localStorage.setItem('facturita-theme', next);
+      applyTheme(next);
+    });
 
-    function updateBadge() {
-      $('ambiente-badge').textContent = $('produccion').checked
-        ? 'producción' : 'homologación';
+    /* ===== Stepper ===== */
+    const PASOS = 4;
+    let pasoActual = 0;
+    function mostrarPaso(n) {
+      pasoActual = Math.max(0, Math.min(PASOS - 1, n));
+      document.querySelectorAll('.step').forEach((s) => {
+        s.classList.toggle('active', Number(s.dataset.step) === pasoActual);
+      });
+      document.querySelectorAll('.dot').forEach((d, i) => {
+        d.classList.toggle('active', i === pasoActual);
+        d.classList.toggle('done', i < pasoActual);
+      });
+      document.querySelectorAll('.bar').forEach((b, i) => b.classList.toggle('done', i < pasoActual));
+      document.querySelectorAll('#labels span').forEach((s, i) => s.classList.toggle('on', i === pasoActual));
+      $('paso-count').textContent = `Paso ${pasoActual + 1} de ${PASOS}`;
+      $('btn-atras').style.visibility = pasoActual === 0 ? 'hidden' : 'visible';
+      $('btn-siguiente').style.visibility = pasoActual === PASOS - 1 ? 'hidden' : 'visible';
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
+    $('btn-atras').addEventListener('click', () => mostrarPaso(pasoActual - 1));
+    $('btn-siguiente').addEventListener('click', () => {
+      // Al avanzar desde Conexión o Emisor, guardamos la config.
+      if (pasoActual === 0 || pasoActual === 1) guardar();
+      mostrarPaso(pasoActual + 1);
+    });
+
+    /* ===== Config / AFIP ===== */
+    function setStatus(kind, msg) { const el = $('afip-status'); el.className = 'status ' + kind; el.innerHTML = msg; }
+    function updateBadge() { $('ambiente-badge').textContent = $('produccion').checked ? 'producción' : 'homologación'; }
 
     async function loadConfig() {
       try {
@@ -502,11 +462,9 @@
         inicioActividades: $('inicio').value.trim(),
       };
       const token = $('token').value.trim();
-      if (token) body.accessToken = token; // solo lo mandamos si escribió uno nuevo
+      if (token) body.accessToken = token;
       const r = await fetch('/api/config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
       });
       if (r.ok) setStatus('ok', '✅ Configuración guardada.');
       else setStatus('err', 'No se pudo guardar.');
@@ -527,89 +485,58 @@
         }
       } catch (e) {
         setStatus('err', '❌ Error de red al probar la conexión.');
-      } finally {
-        $('btn-test').disabled = false;
-      }
+      } finally { $('btn-test').disabled = false; }
     }
-
     $('produccion').addEventListener('change', updateBadge);
     $('btn-guardar').addEventListener('click', guardar);
     $('btn-test').addEventListener('click', probar);
 
-    // ---- Certificado ----
-    function setCertEstado(ok) {
-      const el = $('cert-estado');
-      el.className = 'pill ' + (ok ? 'ok' : 'err');
-      el.textContent = ok ? 'configurado ✅' : 'no configurado';
-    }
-    function setCertGenerando() {
-      const el = $('cert-estado');
-      el.className = 'pill loading';
-      el.innerHTML = '<span class="spinner"></span> generando… (puede tardar unos minutos)';
-    }
-    function setCertStatus(kind, msg) {
-      const el = $('cert-status');
-      el.className = 'status ' + kind;
-      el.innerHTML = msg;
-    }
+    /* ===== Certificado ===== */
+    function setCertEstado(ok) { const el = $('cert-estado'); el.className = 'pill ' + (ok ? 'ok' : 'err'); el.textContent = ok ? 'configurado ✅' : 'no configurado'; }
+    function setCertGenerando() { const el = $('cert-estado'); el.className = 'pill loading'; el.innerHTML = '<span class="spinner"></span> generando… (puede tardar unos minutos)'; }
+    function setCertStatus(kind, msg) { const el = $('cert-status'); el.className = 'status ' + kind; el.innerHTML = msg; }
     async function generarCert() {
       const password = $('clave-fiscal').value;
       if (!password) { setCertStatus('err', 'Ingresá tu clave fiscal.'); return; }
-      await guardar(); // asegura CUIT y token guardados
+      await guardar();
       setCertStatus('loading', '⏳ Generando certificado en AFIP…');
       setCertGenerando();
       $('btn-cert').disabled = true;
       try {
         const r = await fetch('/api/afip/cert', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ password, alias: $('alias').value.trim() }),
         });
         const d = await r.json();
         if (d.ok) {
           setCertStatus('ok', `✅ Certificado generado (alias: ${d.alias}). Autorización wsfe: ${d.wsauth}.`);
           setCertEstado(true);
-          $('clave-fiscal').value = ''; // limpiamos la clave del campo
+          $('clave-fiscal').value = '';
         } else {
           setCertStatus('err', `❌ ${d.error || 'No se pudo generar el certificado'}`);
-          loadConfig(); // restaura el badge al estado real
+          loadConfig();
         }
       } catch (e) {
         setCertStatus('err', '❌ Error de red al generar el certificado.');
         loadConfig();
-      } finally {
-        $('btn-cert').disabled = false;
-      }
+      } finally { $('btn-cert').disabled = false; }
     }
     $('btn-cert').addEventListener('click', generarCert);
 
-    // ---- Google Drive ----
+    /* ===== Google Drive ===== */
     function setDriveEstado(ok) {
       ['drive-estado', 'drive-badge-mini'].forEach((id) => {
-        const el = $(id);
-        el.className = 'pill ' + (ok ? 'ok' : 'err');
-        el.textContent = ok ? 'conectado ✅' : 'no conectado';
+        const el = $(id); el.className = 'pill ' + (ok ? 'ok' : 'err'); el.textContent = ok ? 'conectado ✅' : 'no conectado';
       });
       if ($('drive-badge-mini')) $('drive-badge-mini').style.marginLeft = '6px';
     }
-    function setDriveStatus(kind, msg) {
-      const el = $('drive-status');
-      el.className = 'status ' + kind;
-      el.innerHTML = msg;
-    }
+    function setDriveStatus(kind, msg) { const el = $('drive-status'); el.className = 'status ' + kind; el.innerHTML = msg; }
     async function guardarDrive() {
-      const body = {
-        driveClientId: $('drive-client-id').value.trim(),
-        driveFolderId: $('drive-folder').value.trim(),
-      };
+      const body = { driveClientId: $('drive-client-id').value.trim(), driveFolderId: $('drive-folder').value.trim() };
       const secret = $('drive-secret').value.trim();
       if (secret) body.driveClientSecret = secret;
-      const r = await fetch('/api/config', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      if (r.ok) setDriveStatus('ok', '✅ Credenciales guardadas.');
-      else setDriveStatus('err', 'No se pudieron guardar.');
+      const r = await fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (r.ok) setDriveStatus('ok', '✅ Credenciales guardadas.'); else setDriveStatus('err', 'No se pudieron guardar.');
     }
     async function conectarDrive() {
       await guardarDrive();
@@ -619,7 +546,6 @@
         const d = await r.json();
         if (!r.ok) { setDriveStatus('err', `❌ ${d.error}`); return; }
         const popup = window.open(d.url, 'drive-oauth', 'width=520,height=640');
-        // Escuchar el aviso de la ventana de callback
         const onMsg = (ev) => {
           if (String(ev.data).startsWith('drive-')) {
             const ok = ev.data === 'drive-true';
@@ -630,23 +556,16 @@
           }
         };
         window.addEventListener('message', onMsg);
-      } catch (e) {
-        setDriveStatus('err', '❌ Error al iniciar la autorización.');
-      }
+      } catch (e) { setDriveStatus('err', '❌ Error al iniciar la autorización.'); }
     }
     $('btn-drive-guardar').addEventListener('click', guardarDrive);
     $('btn-drive-conectar').addEventListener('click', conectarDrive);
 
-    // ---- Paso 3: facturación ----
-    function setFactStatus(kind, msg) {
-      const el = $('facturar-status');
-      el.className = 'status ' + kind;
-      el.innerHTML = msg;
-    }
-    const fmtMoney = (n) =>
-      isNaN(Number(n)) ? n : Number(n).toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
+    /* ===== Facturación ===== */
+    function setFactStatus(kind, msg) { const el = $('facturar-status'); el.className = 'status ' + kind; el.innerHTML = msg; }
+    const fmtMoney = (n) => isNaN(Number(n)) ? n : Number(n).toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
 
-    $('btn-elegir').addEventListener('click', () => $('archivo').click());
+    $('drop').addEventListener('click', () => $('archivo').click());
     $('archivo').addEventListener('change', () => {
       const f = $('archivo').files[0];
       $('nombre-archivo').textContent = f ? f.name : '';
@@ -655,27 +574,19 @@
 
     function renderResultados(data) {
       const { resumen, resultados } = data;
-      const r = $('resumen');
-      r.hidden = false;
+      const r = $('resumen'); r.hidden = false;
       r.innerHTML = `
         <div class="chip"><div class="num">${resumen.total}</div><div class="lbl">Total</div></div>
         <div class="chip ok"><div class="num">${resumen.realizadas}</div><div class="lbl">Realizadas</div></div>
         <div class="chip err"><div class="num">${resumen.pendientes}</div><div class="lbl">Pendientes</div></div>`;
-
       const tbody = $('tabla-resultados').querySelector('tbody');
       tbody.innerHTML = resultados.map((f) => {
         const ok = f.estado === 'ok';
-        const detalle = ok
-          ? `CAE ${f.cae} · N° ${f.puntoVenta}-${String(f.nroComprobante).padStart(8, '0')}`
-          : f.error;
-        return `<tr>
-          <td>${f.fila}</td>
-          <td>${f.nombre || '-'}</td>
-          <td>${f.tipo || '-'}</td>
+        const detalle = ok ? `CAE ${f.cae} · N° ${f.puntoVenta}-${String(f.nroComprobante).padStart(8, '0')}` : f.error;
+        return `<tr><td>${f.fila}</td><td>${f.nombre || '-'}</td><td>${f.tipo || '-'}</td>
           <td>${fmtMoney(f.importe)}</td>
           <td><span class="pill ${ok ? 'ok' : 'err'}">${ok ? '✅ OK' : '❌ Error'}</span></td>
-          <td class="detalle">${detalle}</td>
-        </tr>`;
+          <td class="detalle">${detalle}</td></tr>`;
       }).join('');
       $('tabla-wrap').hidden = false;
     }
@@ -683,13 +594,8 @@
     async function facturar() {
       const f = $('archivo').files[0];
       if (!f) return;
-      // Guardar la carpeta de destino antes de facturar.
       const carpeta = $('carpeta').value.trim();
-      await fetch('/api/config', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ carpetaSalida: carpeta }),
-      });
-
+      await fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ carpetaSalida: carpeta }) });
       const fd = new FormData();
       fd.append('archivo', f);
       fd.append('generarPdf', $('generar-pdf').checked ? 'true' : 'false');
@@ -701,36 +607,27 @@
         const data = await r.json();
         if (!r.ok) { setFactStatus('err', `❌ ${data.error || 'Error al procesar'}`); return; }
         const { realizadas, pendientes, ambiente } = data.resumen;
-        setFactStatus(pendientes === 0 ? 'ok' : 'loading',
-          `${realizadas} realizada(s) · ${pendientes} pendiente(s) — ${ambiente}`);
-        // Mostrar descarga y carpeta donde se guardó.
+        setFactStatus(pendientes === 0 ? 'ok' : 'loading', `${realizadas} realizada(s) · ${pendientes} pendiente(s) — ${ambiente}`);
         $('descarga').hidden = false;
         const pdfTxt = data.pdf ? ` · ${data.pdf.generados} PDF(s) generado(s)` : '';
         let driveTxt = '';
-        if (data.drive) {
-          driveTxt = data.drive.error
-            ? ` · ⚠️ Drive: ${data.drive.error}`
-            : ` · ☁︎ ${data.drive.subidos} archivo(s) en Drive`;
-        }
+        if (data.drive) driveTxt = data.drive.error ? ` · ⚠️ Drive: ${data.drive.error}` : ` · ☁︎ ${data.drive.subidos} archivo(s) en Drive`;
         const info = $('carpeta-info');
         if (data.carpeta) {
           info.innerHTML = `Guardado en: ${data.carpeta}${pdfTxt}${driveTxt}`;
-          if (data.drive && data.drive.link) {
-            info.innerHTML += ` — <a class="inline" href="${data.drive.link}" target="_blank" rel="noopener">abrir en Drive</a>`;
-          }
+          if (data.drive && data.drive.link) info.innerHTML += ` — <a class="inline" href="${data.drive.link}" target="_blank" rel="noopener">abrir en Drive</a>`;
         } else {
           info.textContent = data.carpetaError ? `No se pudo guardar en disco: ${data.carpetaError}` : '';
         }
         renderResultados(data);
       } catch (e) {
         setFactStatus('err', '❌ Error de red al facturar.');
-      } finally {
-        $('btn-facturar').disabled = false;
-      }
+      } finally { $('btn-facturar').disabled = false; }
     }
     $('btn-facturar').addEventListener('click', facturar);
 
     loadConfig();
+    mostrarPaso(0);
   </script>
 </body>
 </html>
