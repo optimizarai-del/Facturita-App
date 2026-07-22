@@ -52,6 +52,20 @@ export default function Facturacion() {
     finally { setCargando(false); }
   }
 
+  async function programar() {
+    if (!archivo) return;
+    const fd = new FormData(); fd.append('archivo', archivo);
+    setCargando(true); setEstado({ tipo: 'loading', txt: '⏳ Programando…' });
+    try {
+      const r = await apiFetch('/api/programar', { method: 'POST', body: fd });
+      const d = await r.json();
+      if (!r.ok) { setEstado({ tipo: 'err', txt: d.error }); return; }
+      setEstado({ tipo: 'ok', txt: `📅 ${d.guardadas} factura(s) programada(s). Se emitirán en su fecha de emisión.` });
+      setPreview(null); setArchivo(null);
+    } catch { setEstado({ tipo: 'err', txt: 'Error al programar.' }); }
+    finally { setCargando(false); }
+  }
+
   async function descargarPlantilla() {
     const r = await apiFetch('/api/plantilla');
     const blob = await r.blob();
@@ -109,9 +123,15 @@ export default function Facturacion() {
                 <label className="tgl"><input type="checkbox" checked={generarPdf} onChange={(e) => setGenerarPdf(e.target.checked)} /> Generar PDF</label>
                 <label className="tgl"><input type="checkbox" checked={subirDrive} onChange={(e) => setSubirDrive(e.target.checked)} /> Subir a Drive</label>
               </div>
-              <button className="btn btn-primary" disabled={cargando || preview.conError === preview.cantidad} onClick={emitir}>
-                {cargando ? '...' : 'Emitir facturas ⚡'}
-              </button>
+              <div className="row">
+                <button className="btn btn-primary" disabled={cargando || preview.conError === preview.cantidad} onClick={emitir}>
+                  {cargando ? '...' : 'Emitir ahora ⚡'}
+                </button>
+                <button className="btn btn-ghost" disabled={cargando || preview.conError === preview.cantidad} onClick={programar}>
+                  📅 Programar por fecha
+                </button>
+              </div>
+              <p className="muted sm">Programar: cada factura se emite sola en su "Fecha de emisión".</p>
             </div>
           )}
 

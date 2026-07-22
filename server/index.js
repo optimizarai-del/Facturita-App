@@ -9,7 +9,9 @@ import { getSettings, saveSettings } from './services/settings.js';
 import { testConnection, generarCertificado } from './services/afip.js';
 import { readFacturasFromBuffer } from './services/reader.js';
 import { procesarFacturas, validarFilas } from './services/facturador.js';
-import { guardarFacturas } from './services/persistencia.js';
+import { guardarFacturas, guardarProgramadas } from './services/persistencia.js';
+import { enviarResumenEmisiones } from './services/mailer.js';
+import { startScheduler } from './services/scheduler.js';
 import { guardarResultados, buildResultadosWorkbook } from './services/exporter.js';
 import { generarPDFs } from './services/pdf.js';
 import { getAuthUrl, exchangeCode, subirCarpetaADrive } from './services/drive.js';
@@ -183,6 +185,20 @@ app.post('/api/validar', requireAuth, upload.single('archivo'), async (req, res)
   }
 });
 
+// Fase 7: programar facturas (se emiten solas en su fecha de emisión).
+app.post('/api/programar', requireAuth, upload.single('archivo'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No se recibió ningún archivo Excel.' });
+    const rows = await readFacturasFromBuffer(req.file.buffer);
+    if (!rows.length) return res.status(400).json({ error: 'El Excel no tiene filas para procesar.' });
+    const out = await guardarProgramadas(req.supabase, req.userId, rows);
+    res.json({ ok: true, ...out });
+  } catch (err) {
+    console.error('Error programando:', err);
+    res.status(500).json({ error: err.message || 'No se pudieron programar las facturas' });
+  }
+});
+
 // Subir Excel y emitir las facturas.
 app.post('/api/facturar', requireAuth, upload.single('archivo'), async (req, res) => {
   try {
@@ -237,6 +253,15 @@ app.post('/api/facturar', requireAuth, upload.single('archivo'), async (req, res
       result.persistencia = { guardadas: 0, errores: [{ error: e.message }] };
     }
 
+    // Fase 8: notificar por mail el resumen de emitidas (si hay SMTP y email).
+    if (result.resumen.realizadas > 0 && settings.notifEmail) {
+      try {
+        const emitidas = result.resultados.filter((r) => r.estado === 'ok')
+          .map((r) => ({ tipo: r.tipo, nombre: r.nombre, importe: r.importeNum, cae: r.cae }));
+        await enviarResumenEmisiones(settings.notifEmail, emitidas, result.resumen.ambiente);
+      } catch (e) { console.error('Mail resumen falló:', e.message); }
+    }
+
     res.json(result);
   } catch (err) {
     console.error('Error al facturar:', err);
@@ -265,4 +290,5 @@ app.use(express.static(path.join(__dirname, '..', 'client', 'dist')));
 
 app.listen(PORT, () => {
   console.log(`FacturitaApp backend en http://localhost:${PORT}`);
+  startScheduler(); // Fase 7: emisión automática de programadas (requiere service role key)
 });

@@ -32,6 +32,43 @@ async function upsertCliente(supabase, userId, nombre, documento) {
   return data.id;
 }
 
+const CONCEPTO_NUM_TXT = { productos: 'Productos', servicios: 'Servicios', ambos: 'Ambos' };
+
+// Guarda filas del Excel como facturas PROGRAMADAS (para emitir en su fecha).
+export async function guardarProgramadas(supabase, userId, rows) {
+  let guardadas = 0;
+  const errores = [];
+  for (const r of rows) {
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      const clienteId = await upsertCliente(supabase, userId, r.nombre, r.documento);
+      const conceptoKey = String(r.concepto ?? '').trim().toLowerCase();
+      const fila = {
+        user_id: userId,
+        cliente_id: clienteId,
+        nombre_cliente: r.nombre || '',
+        documento: String(r.documento ?? '').replace(/\D/g, ''),
+        tipo: String(r.tipo || '').toUpperCase() || null,
+        concepto: CONCEPTO_NUM_TXT[conceptoKey] || r.concepto || null,
+        descripcion: r.descripcion || '',
+        importe: num(r.importe),
+        fecha_emision: fechaISO(r.fechaEmision),
+        fecha_servicio_desde: fechaISO(r.fechaServicioDesde),
+        fecha_servicio_hasta: fechaISO(r.fechaServicioHasta),
+        fecha_vencimiento: fechaISO(r.fechaVencimiento),
+        estado: 'programada',
+      };
+      // eslint-disable-next-line no-await-in-loop
+      const { error } = await supabase.from('facturas').insert(fila);
+      if (error) errores.push({ fila: r.fila, error: error.message });
+      else guardadas += 1;
+    } catch (e) {
+      errores.push({ fila: r.fila, error: e.message });
+    }
+  }
+  return { guardadas, errores };
+}
+
 // Guarda todas las facturas del resultado. Devuelve { guardadas, errores }.
 export async function guardarFacturas(supabase, userId, resultados, ambiente) {
   let guardadas = 0;
