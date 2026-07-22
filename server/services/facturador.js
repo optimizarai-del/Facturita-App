@@ -1,5 +1,4 @@
 import { getAfipClient } from './afip.js';
-import { readSettings } from '../config/settings.js';
 
 // --- Tablas de mapeo AFIP ---
 const TIPO_CBTE = { A: 1, B: 6, C: 11 }; // Factura A / B / C
@@ -152,9 +151,8 @@ function limpiarError(err) {
 }
 
 // Procesa todas las filas en orden (secuencial: la numeración de comprobantes lo requiere).
-export async function procesarFacturas(rows) {
-  const settings = await readSettings();
-  const afip = await getAfipClient();
+export async function procesarFacturas(rows, settings) {
+  const afip = getAfipClient(settings);
 
   const resultados = [];
   for (const row of rows) {

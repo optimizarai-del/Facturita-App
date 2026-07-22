@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { requireAuth } from './middleware/auth.js';
 import { buildTemplateWorkbook } from './services/template.js';
-import { readSettings, saveSettings } from './config/settings.js';
+import { getSettings, saveSettings } from './services/settings.js';
 import { testConnection, generarCertificado } from './services/afip.js';
 import { readFacturasFromBuffer } from './services/reader.js';
 import { procesarFacturas } from './services/facturador.js';
@@ -13,8 +13,8 @@ import { guardarResultados, buildResultadosWorkbook } from './services/exporter.
 import { generarPDFs } from './services/pdf.js';
 import { getAuthUrl, exchangeCode, subirCarpetaADrive } from './services/drive.js';
 
-// Guardamos el último resultado en memoria para permitir re-descargar el Excel.
-let ultimoResultado = null;
+// Último resultado por usuario, para re-descargar el Excel.
+const ultimoResultado = new Map();
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -27,23 +27,17 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
-// Fase 0: verificar el login. Devuelve el usuario si el JWT de Supabase es válido.
+// Verificar el login.
 app.get('/api/me', requireAuth, (req, res) => {
   res.json({ userId: req.userId, email: req.userEmail });
 });
 
-// Milestone 1: descarga de la plantilla modelo
+// Descarga de la plantilla modelo (pública, no requiere auth).
 app.get('/api/plantilla', async (req, res) => {
   try {
     const wb = await buildTemplateWorkbook();
-    res.setHeader(
-      'Content-Type',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    );
-    res.setHeader(
-      'Content-Disposition',
-      'attachment; filename="plantilla-facturas.xlsx"'
-    );
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="plantilla-facturas.xlsx"');
     await wb.xlsx.write(res);
     res.end();
   } catch (err) {
@@ -52,20 +46,22 @@ app.get('/api/plantilla', async (req, res) => {
   }
 });
 
-// Milestone 2: leer configuración (nunca devolvemos el access token entero)
-app.get('/api/config', async (req, res) => {
+// Leer configuración del usuario (sin datos sensibles).
+app.get('/api/config', requireAuth, async (req, res) => {
   try {
-    const s = await readSettings();
+    const s = await getSettings(req.supabase, req.userId);
     res.json({
       cuit: s.cuit,
       production: s.production,
       carpetaSalida: s.carpetaSalida,
+      destinoSalida: s.destinoSalida,
       razonSocial: s.razonSocial,
       puntoVenta: s.puntoVenta,
       condicionIVAEmisor: s.condicionIVAEmisor,
       domicilio: s.domicilio,
       ingresosBrutos: s.ingresosBrutos,
       inicioActividades: s.inicioActividades,
+      notifEmail: s.notifEmail,
       driveClientId: s.driveClientId,
       tieneDriveSecret: Boolean(s.driveClientSecret),
       driveConectado: Boolean(s.driveRefreshToken),
@@ -80,12 +76,12 @@ app.get('/api/config', async (req, res) => {
   }
 });
 
-// Milestone 2: guardar configuración
-app.post('/api/config', async (req, res) => {
+// Guardar configuración del usuario.
+app.post('/api/config', requireAuth, async (req, res) => {
   try {
     const {
-      cuit, production, accessToken, carpetaSalida, razonSocial,
-      puntoVenta, condicionIVAEmisor, domicilio, ingresosBrutos, inicioActividades,
+      cuit, production, accessToken, carpetaSalida, destinoSalida, razonSocial,
+      puntoVenta, condicionIVAEmisor, domicilio, ingresosBrutos, inicioActividades, notifEmail,
       driveClientId, driveClientSecret, driveFolderId,
     } = req.body || {};
     const patch = {};
@@ -93,16 +89,18 @@ app.post('/api/config', async (req, res) => {
     if (production !== undefined) patch.production = Boolean(production);
     if (accessToken !== undefined) patch.accessToken = String(accessToken);
     if (carpetaSalida !== undefined) patch.carpetaSalida = String(carpetaSalida);
+    if (destinoSalida !== undefined) patch.destinoSalida = String(destinoSalida);
     if (razonSocial !== undefined) patch.razonSocial = String(razonSocial);
     if (puntoVenta !== undefined) patch.puntoVenta = Number(puntoVenta) || 1;
     if (condicionIVAEmisor !== undefined) patch.condicionIVAEmisor = String(condicionIVAEmisor);
     if (domicilio !== undefined) patch.domicilio = String(domicilio);
     if (ingresosBrutos !== undefined) patch.ingresosBrutos = String(ingresosBrutos);
     if (inicioActividades !== undefined) patch.inicioActividades = String(inicioActividades);
+    if (notifEmail !== undefined) patch.notifEmail = String(notifEmail);
     if (driveClientId !== undefined) patch.driveClientId = String(driveClientId).trim();
     if (driveClientSecret !== undefined) patch.driveClientSecret = String(driveClientSecret).trim();
     if (driveFolderId !== undefined) patch.driveFolderId = String(driveFolderId).trim();
-    const next = await saveSettings(patch);
+    const next = await saveSettings(req.supabase, req.userId, patch);
     res.json({ ok: true, cuit: next.cuit, production: next.production });
   } catch (err) {
     console.error('Error guardando config:', err);
@@ -110,53 +108,51 @@ app.post('/api/config', async (req, res) => {
   }
 });
 
-// Milestone 2: probar conexión con AFIP
-app.post('/api/afip/test', async (req, res) => {
+// Probar conexión con AFIP.
+app.post('/api/afip/test', requireAuth, async (req, res) => {
   try {
-    const result = await testConnection();
+    const settings = await getSettings(req.supabase, req.userId);
+    const result = await testConnection(settings);
     res.json(result);
   } catch (err) {
-    console.error('Error probando conexión AFIP:', err);
-    res.status(502).json({
-      ok: false,
-      error: err.message || 'No se pudo conectar con AFIP',
-    });
+    console.error('Error probando conexión AFIP:', err.message);
+    res.status(502).json({ ok: false, error: err.message || 'No se pudo conectar con AFIP' });
   }
 });
 
-// Generar certificado con AFIP SDK (usa la clave fiscal de forma transitoria)
-app.post('/api/afip/cert', async (req, res) => {
+// Generar certificado con AFIP SDK (clave fiscal transitoria; guarda cert+key).
+app.post('/api/afip/cert', requireAuth, async (req, res) => {
   try {
     const { password, username, alias } = req.body || {};
-    const result = await generarCertificado({ password, username, alias });
-    res.json(result);
+    const settings = await getSettings(req.supabase, req.userId);
+    const result = await generarCertificado(settings, { password, username, alias });
+    await saveSettings(req.supabase, req.userId, {
+      cert: result.cert, key: result.key, certAlias: result.alias,
+    });
+    res.json({ ok: true, alias: result.alias, wsauth: result.wsauth });
   } catch (err) {
     console.error('Error generando certificado:', err?.message);
-    res.status(502).json({
-      ok: false,
-      error: err?.data?.message || err.message || 'No se pudo generar el certificado',
-    });
+    res.status(502).json({ ok: false, error: err?.data?.message || err.message || 'No se pudo generar el certificado' });
   }
 });
 
-// Milestone 5: obtener la URL de autorización de Google Drive
-app.get('/api/drive/auth-url', async (req, res) => {
+// URL de autorización de Google Drive (userId codificado en el state).
+app.get('/api/drive/auth-url', requireAuth, async (req, res) => {
   try {
-    const url = await getAuthUrl();
+    const settings = await getSettings(req.supabase, req.userId);
+    const url = getAuthUrl(settings, req.userId);
     res.json({ url });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
 });
 
-// Milestone 5: callback OAuth de Google (guarda el refresh token)
+// Callback OAuth de Google (NO lleva JWT; recupera el usuario del state).
 app.get('/api/drive/callback', async (req, res) => {
-  const { code, error } = req.query;
-  if (error) {
-    return res.send(paginaCierre(`No se autorizó el acceso: ${error}`, false));
-  }
+  const { code, error, state } = req.query;
+  if (error) return res.send(paginaCierre(`No se autorizó el acceso: ${error}`, false));
   try {
-    await exchangeCode(String(code));
+    await exchangeCode(String(code), String(state));
     res.send(paginaCierre('✅ Google Drive conectado. Ya podés cerrar esta pestaña.', true));
   } catch (err) {
     res.send(paginaCierre(`Error al conectar: ${err.message}`, false));
@@ -165,29 +161,25 @@ app.get('/api/drive/callback', async (req, res) => {
 
 function paginaCierre(msg, ok) {
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Google Drive</title>
-    <style>body{font-family:system-ui;display:grid;place-items:center;height:100vh;margin:0;background:#fbfbfd}
-    .c{text-align:center;padding:32px;border-radius:16px;background:#fff;box-shadow:0 8px 30px rgba(0,0,0,.08);max-width:420px}
-    .m{color:${ok ? '#1d7a3d' : '#c0362c'};font-size:1.05rem}</style></head>
+    <style>body{font-family:system-ui;display:grid;place-items:center;height:100vh;margin:0;background:#0b0d12;color:#e7e9ee}
+    .c{text-align:center;padding:32px;border-radius:16px;background:#151821;max-width:420px}
+    .m{color:${ok ? '#4fe0a6' : '#ff7a7a'};font-size:1.05rem}</style></head>
     <body><div class="c"><div class="m">${msg}</div></div>
     <script>try{window.opener&&window.opener.postMessage('drive-'+${ok},'*')}catch(e){}</script>
     </body></html>`;
 }
 
-// Milestone 3: subir Excel y emitir las facturas
-app.post('/api/facturar', upload.single('archivo'), async (req, res) => {
+// Subir Excel y emitir las facturas.
+app.post('/api/facturar', requireAuth, upload.single('archivo'), async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'No se recibió ningún archivo Excel.' });
-    }
+    if (!req.file) return res.status(400).json({ error: 'No se recibió ningún archivo Excel.' });
     const rows = await readFacturasFromBuffer(req.file.buffer);
-    if (!rows.length) {
-      return res.status(400).json({ error: 'El Excel no tiene filas de facturas para procesar.' });
-    }
-    const result = await procesarFacturas(rows);
-    ultimoResultado = result;
+    if (!rows.length) return res.status(400).json({ error: 'El Excel no tiene filas de facturas para procesar.' });
 
-    // Guardar Excel de resultados en la carpeta de salida.
-    const settings = await readSettings();
+    const settings = await getSettings(req.supabase, req.userId);
+    const result = await procesarFacturas(rows, settings);
+    ultimoResultado.set(req.userId, result);
+
     let carpeta = null;
     try {
       const out = await guardarResultados(result, settings);
@@ -198,23 +190,20 @@ app.post('/api/facturar', upload.single('archivo'), async (req, res) => {
       result.carpetaError = e.message;
     }
 
-    // Generar PDFs de las facturas realizadas (si se pidió y hay carpeta).
     const quierePdf = String(req.body?.generarPdf ?? 'true') !== 'false';
     if (quierePdf && carpeta && result.resumen.realizadas > 0) {
       try {
-        const pdf = await generarPDFs(result.resultados, settings, carpeta);
-        result.pdf = pdf;
+        result.pdf = await generarPDFs(result.resultados, settings, carpeta);
       } catch (e) {
         console.error('Error generando PDFs:', e.message);
         result.pdf = { generados: 0, errores: [{ error: e.message }] };
       }
     }
 
-    // Subir la carpeta a Google Drive (si se pidió y está conectado).
     const quiereDrive = String(req.body?.subirDrive ?? 'false') === 'true';
     if (quiereDrive && carpeta) {
       try {
-        result.drive = await subirCarpetaADrive(carpeta);
+        result.drive = await subirCarpetaADrive(carpeta, settings);
       } catch (e) {
         console.error('Error subiendo a Drive:', e.message);
         result.drive = { error: e.message };
@@ -228,13 +217,12 @@ app.post('/api/facturar', upload.single('archivo'), async (req, res) => {
   }
 });
 
-// Descargar el Excel de resultados del último procesamiento.
-app.get('/api/resultados.xlsx', async (req, res) => {
+// Re-descargar el Excel de resultados del último procesamiento del usuario.
+app.get('/api/resultados.xlsx', requireAuth, async (req, res) => {
   try {
-    if (!ultimoResultado) {
-      return res.status(404).json({ error: 'Todavía no se generó ningún resultado.' });
-    }
-    const wb = await buildResultadosWorkbook(ultimoResultado);
+    const result = ultimoResultado.get(req.userId);
+    if (!result) return res.status(404).json({ error: 'Todavía no se generó ningún resultado.' });
+    const wb = await buildResultadosWorkbook(result);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', 'attachment; filename="resultados-facturas.xlsx"');
     await wb.xlsx.write(res);
@@ -245,9 +233,9 @@ app.get('/api/resultados.xlsx', async (req, res) => {
   }
 });
 
-// Servir el frontend estático
-app.use(express.static(path.join(__dirname, '..', 'public')));
+// En producción, servir el build de React.
+app.use(express.static(path.join(__dirname, '..', 'client', 'dist')));
 
 app.listen(PORT, () => {
-  console.log(`FacturitaApp corriendo en http://localhost:${PORT}`);
+  console.log(`FacturitaApp backend en http://localhost:${PORT}`);
 });

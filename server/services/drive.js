@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { google } from 'googleapis';
-import { readSettings, saveSettings } from '../config/settings.js';
+import { supabaseService } from './supabase.js';
 
 // URI de redirección OAuth (debe coincidir con la registrada en Google Cloud Console).
 const REDIRECT_URI = 'http://localhost:3000/api/drive/callback';
@@ -26,33 +26,44 @@ function oauthClient(settings) {
   );
 }
 
-// Devuelve la URL a la que el usuario debe ir para autorizar el acceso.
-export async function getAuthUrl() {
-  const settings = await readSettings();
+// Devuelve la URL de autorización. Codifica el userId en el `state` para
+// recuperarlo en el callback (que no lleva el JWT del usuario).
+export function getAuthUrl(settings, userId) {
   const client = oauthClient(settings);
   return client.generateAuthUrl({
     access_type: 'offline', // para obtener refresh token
     prompt: 'consent', // fuerza refresh token aunque ya haya autorizado
     scope: SCOPES,
+    state: userId,
   });
 }
 
-// Intercambia el código de autorización por tokens y guarda el refresh token.
-export async function exchangeCode(code) {
-  const settings = await readSettings();
-  const client = oauthClient(settings);
+// Intercambia el código por tokens y guarda el refresh token del usuario (por state).
+// Usa el service client porque el callback de Google no trae el JWT del usuario.
+export async function exchangeCode(code, userId) {
+  const svc = supabaseService();
+  const { data: cred } = await svc
+    .from('drive_credentials').select('*').eq('user_id', userId).single();
+  if (!cred) throw new Error('Usuario no encontrado.');
+
+  const client = oauthClient({
+    driveClientId: cred.client_id,
+    driveClientSecret: cred.client_secret,
+  });
   const { tokens } = await client.getToken(code);
   if (!tokens.refresh_token) {
-    throw new Error(
-      'Google no devolvió un refresh token. Revocá el acceso en tu cuenta y volvé a autorizar.'
-    );
+    throw new Error('Google no devolvió un refresh token. Revocá el acceso y volvé a autorizar.');
   }
-  await saveSettings({ driveRefreshToken: tokens.refresh_token });
+  const { error } = await svc
+    .from('drive_credentials')
+    .update({ refresh_token: tokens.refresh_token, updated_at: new Date().toISOString() })
+    .eq('user_id', userId);
+  if (error) throw new Error(error.message);
   return { ok: true };
 }
 
 // Devuelve un cliente Drive autenticado y listo para usar.
-async function driveClient(settings) {
+function driveClient(settings) {
   if (!settings.driveRefreshToken) {
     throw new Error('Google Drive no está conectado. Autorizá el acceso primero.');
   }
@@ -76,9 +87,8 @@ async function crearCarpetaDrive(drive, nombre, parentId) {
 
 // Sube todos los archivos de una carpeta local a una carpeta nueva en Drive.
 // Devuelve { subidos, link } o lanza con mensaje claro.
-export async function subirCarpetaADrive(carpetaLocal) {
-  const settings = await readSettings();
-  const drive = await driveClient(settings);
+export async function subirCarpetaADrive(carpetaLocal, settings) {
+  const drive = driveClient(settings);
 
   const nombreCarpeta = path.basename(carpetaLocal);
   const carpetaDrive = await crearCarpetaDrive(drive, nombreCarpeta, settings.driveFolderId);
