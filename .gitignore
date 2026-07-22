@@ -1,6 +1,9 @@
 node_modules/
+**/node_modules/
 *.log
 .env
+**/.env
+client/dist/
 salida/
 certificados/
 config.local.json

@@ -1,7 +1,9 @@
+import 'dotenv/config';
 import express from 'express';
 import multer from 'multer';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { requireAuth } from './middleware/auth.js';
 import { buildTemplateWorkbook } from './services/template.js';
 import { readSettings, saveSettings } from './config/settings.js';
 import { testConnection, generarCertificado } from './services/afip.js';
@@ -24,6 +26,11 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
+
+// Fase 0: verificar el login. Devuelve el usuario si el JWT de Supabase es válido.
+app.get('/api/me', requireAuth, (req, res) => {
+  res.json({ userId: req.userId, email: req.userEmail });
+});
 
 // Milestone 1: descarga de la plantilla modelo
 app.get('/api/plantilla', async (req, res) => {
