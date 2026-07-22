@@ -8,7 +8,8 @@ import { buildTemplateWorkbook } from './services/template.js';
 import { getSettings, saveSettings } from './services/settings.js';
 import { testConnection, generarCertificado } from './services/afip.js';
 import { readFacturasFromBuffer } from './services/reader.js';
-import { procesarFacturas } from './services/facturador.js';
+import { procesarFacturas, validarFilas } from './services/facturador.js';
+import { guardarFacturas } from './services/persistencia.js';
 import { guardarResultados, buildResultadosWorkbook } from './services/exporter.js';
 import { generarPDFs } from './services/pdf.js';
 import { getAuthUrl, exchangeCode, subirCarpetaADrive } from './services/drive.js';
@@ -169,6 +170,19 @@ function paginaCierre(msg, ok) {
     </body></html>`;
 }
 
+// Fase 3: validar el Excel SIN emitir (preview con total y problemas por fila).
+app.post('/api/validar', requireAuth, upload.single('archivo'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No se recibió ningún archivo Excel.' });
+    const rows = await readFacturasFromBuffer(req.file.buffer);
+    if (!rows.length) return res.status(400).json({ error: 'El Excel no tiene filas para procesar.' });
+    res.json(validarFilas(rows));
+  } catch (err) {
+    console.error('Error validando:', err);
+    res.status(500).json({ error: err.message || 'No se pudo validar el Excel' });
+  }
+});
+
 // Subir Excel y emitir las facturas.
 app.post('/api/facturar', requireAuth, upload.single('archivo'), async (req, res) => {
   try {
@@ -200,7 +214,10 @@ app.post('/api/facturar', requireAuth, upload.single('archivo'), async (req, res
       }
     }
 
-    const quiereDrive = String(req.body?.subirDrive ?? 'false') === 'true';
+    // Respeta la preferencia de destino del usuario (o el checkbox como override).
+    const destino = settings.destinoSalida || 'local';
+    const quiereDrive = destino === 'drive' || destino === 'ambos'
+      || String(req.body?.subirDrive ?? 'false') === 'true';
     if (quiereDrive && carpeta) {
       try {
         result.drive = await subirCarpetaADrive(carpeta, settings);
@@ -208,6 +225,16 @@ app.post('/api/facturar', requireAuth, upload.single('archivo'), async (req, res
         console.error('Error subiendo a Drive:', e.message);
         result.drive = { error: e.message };
       }
+    }
+
+    // Fase 4: persistir las facturas en Supabase (historial + clientes).
+    try {
+      result.persistencia = await guardarFacturas(
+        req.supabase, req.userId, result.resultados, result.resumen.ambiente
+      );
+    } catch (e) {
+      console.error('Error persistiendo facturas:', e.message);
+      result.persistencia = { guardadas: 0, errores: [{ error: e.message }] };
     }
 
     res.json(result);

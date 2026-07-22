@@ -4,6 +4,39 @@ import { getAfipClient } from './afip.js';
 const TIPO_CBTE = { A: 1, B: 6, C: 11 }; // Factura A / B / C
 const CONCEPTO = { productos: 1, servicios: 2, ambos: 3 };
 const IVA_21_ID = 5; // Id de alícuota 21% en AFIP
+// Umbral aproximado por el cual AFIP exige identificar al receptor (cambia periódicamente).
+const UMBRAL_IDENTIFICAR = 344000;
+
+// Valida las filas SIN emitir. Devuelve { total, cantidad, problemas: [{fila, motivo, nivel}] }.
+export function validarFilas(rows) {
+  const problemas = [];
+  let total = 0;
+  for (const row of rows) {
+    const importe = Number(String(row.importe ?? '').toString().replace(',', '.'));
+    if (Number.isFinite(importe) && importe > 0) total += importe;
+    try {
+      buildVoucherData(row, { puntoVenta: 1 }); // valida tipo/concepto/importe/doc
+    } catch (e) {
+      problemas.push({ fila: row.fila, motivo: e.message, nivel: 'error' });
+      continue;
+    }
+    // Advertencia: importe alto sin documento (Consumidor Final).
+    const doc = String(row.documento ?? '').replace(/\D/g, '');
+    if (!doc && importe >= UMBRAL_IDENTIFICAR) {
+      problemas.push({
+        fila: row.fila,
+        motivo: `Importe alto ($${importe.toLocaleString('es-AR')}) sin documento: AFIP puede exigir identificar al cliente.`,
+        nivel: 'aviso',
+      });
+    }
+  }
+  return {
+    cantidad: rows.length,
+    total: Math.round(total * 100) / 100,
+    conError: problemas.filter((p) => p.nivel === 'error').length,
+    problemas,
+  };
+}
 
 // Tipo de documento del receptor según lo ingresado.
 function mapDocumento(docRaw) {
@@ -52,6 +85,8 @@ export function buildVoucherData(row, settings) {
   const { DocTipo, DocNro } = mapDocumento(row.documento);
 
   const hoy = yyyymmdd();
+  // Fecha del comprobante: la de la fila si vino, si no hoy.
+  const fechaCbte = row.fechaEmision || hoy;
   const data = {
     CantReg: 1,
     PtoVta: Number(settings.puntoVenta) || 1,
@@ -59,7 +94,7 @@ export function buildVoucherData(row, settings) {
     Concepto,
     DocTipo,
     DocNro,
-    CbteFch: hoy,
+    CbteFch: fechaCbte,
     ImpTotal: importe,
     ImpTotConc: 0, // neto no gravado
     ImpOpEx: 0, // exento
@@ -83,10 +118,11 @@ export function buildVoucherData(row, settings) {
   }
 
   // Para servicios (o ambos) AFIP exige fechas del período de servicio.
+  // Se usan las de la fila si vinieron; si no, la fecha del comprobante.
   if (Concepto === CONCEPTO.servicios || Concepto === CONCEPTO.ambos) {
-    data.FchServDesde = hoy;
-    data.FchServHasta = hoy;
-    data.FchVtoPago = hoy;
+    data.FchServDesde = row.fechaServicioDesde || fechaCbte;
+    data.FchServHasta = row.fechaServicioHasta || fechaCbte;
+    data.FchVtoPago = row.fechaVencimiento || fechaCbte;
   }
 
   return data;
@@ -122,6 +158,10 @@ async function emitirUna(afip, row, settings) {
       iva: data.ImpIVA,
       concepto: data.Concepto,
       descripcion: row.descripcion || '',
+      // Fechas (yyyymmdd) para persistir en Supabase.
+      fechaServicioDesde: data.FchServDesde || null,
+      fechaServicioHasta: data.FchServHasta || null,
+      fechaVencimiento: data.FchVtoPago || null,
     };
   } catch (err) {
     return {

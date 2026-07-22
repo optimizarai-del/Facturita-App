@@ -44,6 +44,38 @@ export const COLUMNS = [
     ejemplo: 121000,
     required: true,
   },
+  {
+    key: 'fechaEmision',
+    header: 'Fecha de emisión (dd/mm/aaaa)',
+    width: 22,
+    ejemplo: '22/07/2026',
+    required: false, // vacío = hoy
+    fecha: true,
+  },
+  {
+    key: 'fechaServicioDesde',
+    header: 'Fecha inicio servicio (dd/mm/aaaa)',
+    width: 24,
+    ejemplo: '01/07/2026',
+    required: false,
+    fecha: true,
+  },
+  {
+    key: 'fechaServicioHasta',
+    header: 'Fecha fin servicio (dd/mm/aaaa)',
+    width: 24,
+    ejemplo: '31/07/2026',
+    required: false,
+    fecha: true,
+  },
+  {
+    key: 'fechaVencimiento',
+    header: 'Fecha de vencimiento (dd/mm/aaaa)',
+    width: 24,
+    ejemplo: '10/08/2026',
+    required: false,
+    fecha: true,
+  },
 ];
 
 export const HEADER_ROW = COLUMNS.map((c) => c.header);

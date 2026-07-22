@@ -37,17 +37,42 @@ export async function readFacturasFromBuffer(buffer) {
     const obj = { fila: rowNumber };
     for (const c of COLUMNS) {
       const idx = colIndexByKey[c.key];
-      obj[c.key] = idx ? cellText(row.getCell(idx)) : '';
+      const raw = idx ? cellText(row.getCell(idx)) : '';
+      obj[c.key] = c.fecha ? parseFecha(raw) : raw;
     }
 
     // Saltar filas totalmente vacías.
-    const vacia = COLUMNS.every((c) => !String(obj[c.key] ?? '').trim());
+    const vacia = COLUMNS.every((c) => {
+      const v = obj[c.key];
+      return v === null || v === undefined || String(v).trim() === '';
+    });
     if (vacia) return;
 
     rows.push(obj);
   });
 
   return rows;
+}
+
+// Parsea una fecha a número yyyymmdd (formato que usa AFIP). Devuelve null si vacío.
+// Soporta: objeto Date (celda con formato fecha de Excel), 'dd/mm/aaaa', 'dd-mm-aaaa', 'aaaa-mm-dd'.
+export function parseFecha(raw) {
+  if (raw === null || raw === undefined || String(raw).trim() === '') return null;
+  if (raw instanceof Date) {
+    return Number(
+      `${raw.getFullYear()}${String(raw.getMonth() + 1).padStart(2, '0')}${String(raw.getDate()).padStart(2, '0')}`
+    );
+  }
+  const s = String(raw).trim();
+  let d, m, y;
+  let match = s.match(/^(\d{1,2})[/\-](\d{1,2})[/\-](\d{4})$/); // dd/mm/aaaa
+  if (match) { [, d, m, y] = match; }
+  else {
+    match = s.match(/^(\d{4})[/\-](\d{1,2})[/\-](\d{1,2})$/); // aaaa-mm-dd
+    if (match) { [, y, m, d] = match; }
+    else return null;
+  }
+  return Number(`${y}${String(m).padStart(2, '0')}${String(d).padStart(2, '0')}`);
 }
 
 function normalize(s) {
