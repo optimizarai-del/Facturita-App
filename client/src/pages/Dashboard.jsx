@@ -66,16 +66,21 @@ export default function Dashboard() {
             <table>
               <thead><tr><th>Fecha</th><th>Cliente</th><th>Tipo</th><th>N°</th><th>Importe</th><th>Estado</th></tr></thead>
               <tbody>
-                {filtradas.slice(0, visibles).map((f) => (
-                  <tr key={f.id}>
-                    <td>{fmtFecha(f.fecha_emision)}</td>
-                    <td>{f.nombre_cliente || '-'}</td>
-                    <td>{f.tipo || '-'}</td>
-                    <td>{f.nro_comprobante ? `${f.punto_venta}-${String(f.nro_comprobante).padStart(8, '0')}` : '-'}</td>
-                    <td>{money(f.importe)}</td>
-                    <td><span className={`pill ${f.estado === 'emitida' ? 'ok' : f.estado === 'error' ? 'err' : 'prog'}`}>{f.estado}</span></td>
-                  </tr>
-                ))}
+                {filtradas.slice(0, visibles).map((f) => {
+                  const prog = f.estado === 'programada';
+                  return (
+                    <tr key={f.id}>
+                      <td>{prog
+                        ? <span title="Se emite en esta fecha">📅 {fmtFecha(f.fecha_emision)}</span>
+                        : fmtFecha(f.fecha_emision)}</td>
+                      <td>{f.nombre_cliente || '-'}</td>
+                      <td>{f.tipo || '-'}</td>
+                      <td>{f.nro_comprobante ? `${f.punto_venta}-${String(f.nro_comprobante).padStart(8, '0')}` : '-'}</td>
+                      <td>{money(f.importe)}</td>
+                      <td><span className={`pill ${f.estado === 'emitida' ? 'ok' : f.estado === 'error' ? 'err' : 'prog'}`}><span className="d" />{f.estado}</span></td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
             {filtradas.length > visibles && (

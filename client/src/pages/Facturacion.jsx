@@ -14,6 +14,9 @@ export default function Facturacion() {
   const [generarPdf, setGenerarPdf] = useState(true);
   const [subirDrive, setSubirDrive] = useState(false);
 
+  // Paso actual del wizard: 1 subir · 2 revisar · 3 emitir.
+  const paso = resultado ? 3 : preview ? 2 : 1;
+
   async function validar(file) {
     setPreview(null); setResultado(null); setEstado(null);
     if (!file) return;
@@ -60,27 +63,24 @@ export default function Facturacion() {
       const r = await apiFetch('/api/programar', { method: 'POST', body: fd });
       const d = await r.json();
       if (!r.ok) { setEstado({ tipo: 'err', txt: d.error }); return; }
-      setEstado({ tipo: 'ok', txt: `📅 ${d.guardadas} factura(s) programada(s). Se emitirán en su fecha de emisión.` });
+      const extra = d.sinFecha > 0
+        ? ` ${d.sinFecha} sin fecha se emitirán en la próxima corrida (mañana 09:00).`
+        : '';
+      setEstado({ tipo: 'ok', txt: `📅 ${d.guardadas} factura(s) programada(s). Cada una se emite sola en su fecha de emisión.${extra}` });
       setPreview(null); setArchivo(null);
     } catch { setEstado({ tipo: 'err', txt: 'Error al programar.' }); }
     finally { setCargando(false); }
   }
 
-  async function descargarPlantilla() {
-    const r = await apiFetch('/api/plantilla');
+  async function descargar(path, nombre) {
+    const r = await apiFetch(path);
     const blob = await r.blob();
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = 'plantilla-facturas.xlsx'; a.click();
+    const a = document.createElement('a'); a.href = url; a.download = nombre; a.click();
     URL.revokeObjectURL(url);
   }
 
-  async function descargarResultados() {
-    const r = await apiFetch('/api/resultados.xlsx');
-    const blob = await r.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = 'resultados-facturas.xlsx'; a.click();
-    URL.revokeObjectURL(url);
-  }
+  const bloqueado = cargando || (preview && preview.conError === preview.cantidad);
 
   return (
     <div>
@@ -92,80 +92,99 @@ export default function Facturacion() {
       {seccion === 'config' && <Config />}
 
       {seccion === 'emitir' && (
-        <div className="card">
-          <h2>Generá tus facturas</h2>
-          <p className="muted">Descargá la plantilla, completala y subila. Vas a ver un resumen antes de emitir.</p>
-
-          <div className="row">
-            <button className="btn btn-ghost" onClick={descargarPlantilla}>⬇️ Descargar plantilla</button>
-            <label className="btn btn-ghost file-btn">
-              Elegir Excel…
-              <input type="file" accept=".xlsx" hidden onChange={elegir} />
-            </label>
-            {archivo && <span className="muted">{archivo.name}</span>}
+        <>
+          <div className="steps">
+            <div className={`step ${paso > 1 ? 'done' : 'cur'}`}>
+              <span className="n">{paso > 1 ? '✓' : '1'}</span><span className="lbl">Subir Excel</span>
+            </div>
+            <span className="line" style={paso > 1 ? { background: 'var(--accent)' } : undefined} />
+            <div className={`step ${paso > 2 ? 'done' : paso === 2 ? 'cur' : ''}`}>
+              <span className="n">{paso > 2 ? '✓' : '2'}</span><span className="lbl">Revisar</span>
+            </div>
+            <span className="line" style={paso > 2 ? { background: 'var(--accent)' } : undefined} />
+            <div className={`step ${paso === 3 ? 'cur' : ''}`}>
+              <span className="n">3</span><span className="lbl">Emitir</span>
+            </div>
           </div>
 
-          {preview && (
-            <div className="preview">
-              <div className="chips">
-                <div className="chip"><b>{preview.cantidad}</b><span>Filas</span></div>
-                <div className="chip"><b>{money(preview.total)}</b><span>Total</span></div>
-                <div className={`chip ${preview.conError ? 'err' : 'ok'}`}><b>{preview.conError}</b><span>Con error</span></div>
-              </div>
-              {preview.problemas.length > 0 && (
-                <ul className="problemas">
-                  {preview.problemas.map((p, i) => (
-                    <li key={i} className={p.nivel}>Fila {p.fila}: {p.motivo}</li>
-                  ))}
-                </ul>
-              )}
-              <div className="row">
-                <label className="tgl"><input type="checkbox" checked={generarPdf} onChange={(e) => setGenerarPdf(e.target.checked)} /> Generar PDF</label>
-                <label className="tgl"><input type="checkbox" checked={subirDrive} onChange={(e) => setSubirDrive(e.target.checked)} /> Subir a Drive</label>
-              </div>
-              <div className="row">
-                <button className="btn btn-primary" disabled={cargando || preview.conError === preview.cantidad} onClick={emitir}>
-                  {cargando ? '...' : 'Emitir ahora ⚡'}
-                </button>
-                <button className="btn btn-ghost" disabled={cargando || preview.conError === preview.cantidad} onClick={programar}>
-                  📅 Programar por fecha
-                </button>
-              </div>
-              <p className="muted sm">Programar: cada factura se emite sola en su "Fecha de emisión".</p>
-            </div>
-          )}
+          <div className="card">
+            {!resultado && (
+              <>
+                <label className="drop">
+                  <div className="drop-ic" aria-hidden="true">⬆️</div>
+                  <h3>Elegí tu Excel de facturas</h3>
+                  <p>Usá la plantilla (incluye la columna de IVA). Vas a ver un resumen antes de emitir.</p>
+                  {archivo && <span className="file-tag">📄 {archivo.name}</span>}
+                  <input type="file" accept=".xlsx" hidden onChange={elegir} />
+                </label>
+                <div className="row">
+                  <button className="btn btn-ghost sm" onClick={() => descargar('/api/plantilla', 'plantilla-facturas.xlsx')}>⬇️ Descargar plantilla</button>
+                </div>
+              </>
+            )}
 
-          {estado && <div className={`status ${estado.tipo}`}>{estado.txt}</div>}
+            {preview && !resultado && (
+              <div className="preview">
+                <div className="chips">
+                  <div className="chip"><b>{preview.cantidad}</b><span>Filas</span></div>
+                  <div className="chip"><b>{money(preview.total)}</b><span>Total</span></div>
+                  <div className={`chip ${preview.conError ? 'err' : 'ok'}`}><b>{preview.conError}</b><span>Con error</span></div>
+                </div>
+                {preview.problemas.length > 0 && (
+                  <ul className="problemas">
+                    {preview.problemas.map((p, i) => (
+                      <li key={i} className={p.nivel}>Fila {p.fila}: {p.motivo}</li>
+                    ))}
+                  </ul>
+                )}
+                <div className="row">
+                  <label className="tgl"><input type="checkbox" style={{ width: 'auto' }} checked={generarPdf} onChange={(e) => setGenerarPdf(e.target.checked)} /> Generar PDF</label>
+                  <label className="tgl"><input type="checkbox" style={{ width: 'auto' }} checked={subirDrive} onChange={(e) => setSubirDrive(e.target.checked)} /> Subir a Drive</label>
+                  <span className="spacer" />
+                  <button className="btn btn-ghost" disabled={bloqueado} onClick={programar}>📅 Programar por fecha</button>
+                  <button className="btn btn-primary" disabled={bloqueado} onClick={emitir}>
+                    {cargando ? '...' : 'Emitir ahora ⚡'}
+                  </button>
+                </div>
+                <p className="muted sm" style={{ marginTop: 10 }}>Programar: cada factura se emite sola en su “Fecha de emisión” (las sin fecha, en la próxima corrida).</p>
+              </div>
+            )}
 
-          {resultado && (
-            <div className="resultado">
-              <div className="chips">
-                <div className="chip"><b>{resultado.resumen.total}</b><span>Total</span></div>
-                <div className="chip ok"><b>{resultado.resumen.realizadas}</b><span>Realizadas</span></div>
-                <div className="chip err"><b>{resultado.resumen.pendientes}</b><span>Con error</span></div>
+            {estado && <div className={`status ${estado.tipo}`}>{estado.txt}</div>}
+
+            {resultado && (
+              <div className="resultado">
+                <div className="chips">
+                  <div className="chip"><b>{resultado.resumen.total}</b><span>Total</span></div>
+                  <div className="chip ok"><b>{resultado.resumen.realizadas}</b><span>Realizadas</span></div>
+                  <div className="chip err"><b>{resultado.resumen.pendientes}</b><span>Con error</span></div>
+                </div>
+                <div className="row" style={{ marginTop: 0 }}>
+                  <button className="btn btn-ghost sm" onClick={() => descargar('/api/resultados.xlsx', 'resultados-facturas.xlsx')}>⬇️ Excel de resultados</button>
+                  <button className="btn btn-ghost sm" onClick={() => { setResultado(null); setPreview(null); setArchivo(null); setEstado(null); }}>Emitir otro lote</button>
+                </div>
+                <div className="tabla-wrap">
+                  <table>
+                    <thead><tr><th>Fila</th><th>Cliente</th><th>Tipo</th><th>Importe</th><th>Estado</th><th>Detalle</th></tr></thead>
+                    <tbody>
+                      {resultado.resultados.map((f) => {
+                        const ok = f.estado === 'ok';
+                        return (
+                          <tr key={f.fila}>
+                            <td>{f.fila}</td><td>{f.nombre || '-'}</td><td>{f.tipo}</td><td>{money(f.importe)}</td>
+                            <td><span className={`pill ${ok ? 'ok' : 'err'}`}><span className="d" />{ok ? 'OK' : 'Error'}</span></td>
+                            <td className="detalle">{ok ? `CAE ${f.cae} · ${f.puntoVenta}-${String(f.nroComprobante).padStart(8, '0')}` : f.error}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                {resultado.persistencia && <p className="muted sm" style={{ marginTop: 12 }}>Guardadas en tu historial: {resultado.persistencia.guardadas}</p>}
               </div>
-              <button className="btn btn-ghost sm" onClick={descargarResultados}>⬇️ Excel de resultados</button>
-              <div className="tabla-wrap">
-                <table>
-                  <thead><tr><th>Fila</th><th>Cliente</th><th>Tipo</th><th>Importe</th><th>Estado</th><th>Detalle</th></tr></thead>
-                  <tbody>
-                    {resultado.resultados.map((f) => {
-                      const ok = f.estado === 'ok';
-                      return (
-                        <tr key={f.fila}>
-                          <td>{f.fila}</td><td>{f.nombre || '-'}</td><td>{f.tipo}</td><td>{money(f.importe)}</td>
-                          <td><span className={`pill ${ok ? 'ok' : 'err'}`}>{ok ? 'OK' : 'Error'}</span></td>
-                          <td className="detalle">{ok ? `CAE ${f.cae} · ${f.puntoVenta}-${String(f.nroComprobante).padStart(8, '0')}` : f.error}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-              {resultado.persistencia && <p className="muted sm">Guardadas en tu historial: {resultado.persistencia.guardadas}</p>}
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        </>
       )}
     </div>
   );

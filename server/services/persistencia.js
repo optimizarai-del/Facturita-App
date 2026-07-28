@@ -16,6 +16,11 @@ function num(v) {
   return Number.isFinite(n) ? n : null;
 }
 
+// Fecha de HOY en Argentina (yyyy-mm-dd), sin depender del timezone del server.
+function hoyISO() {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
+}
+
 // Busca o crea el cliente por documento; devuelve su id (o null si no hay documento).
 async function upsertCliente(supabase, userId, nombre, documento, condicionIVA) {
   const doc = String(documento ?? '').replace(/\D/g, '');
@@ -53,9 +58,11 @@ const CONCEPTO_NUM_TXT = { productos: 'Productos', servicios: 'Servicios', ambos
 // Guarda filas del Excel como facturas PROGRAMADAS (para emitir en su fecha).
 export async function guardarProgramadas(supabase, userId, rows) {
   let guardadas = 0;
+  let sinFecha = 0; // programadas para hoy por no traer fecha de emisión
   const errores = [];
   for (const r of rows) {
     try {
+      if (!fechaISO(r.fechaEmision)) sinFecha += 1;
       // eslint-disable-next-line no-await-in-loop
       const clienteId = await upsertCliente(supabase, userId, r.nombre, r.documento);
       const conceptoKey = String(r.concepto ?? '').trim().toLowerCase();
@@ -69,7 +76,9 @@ export async function guardarProgramadas(supabase, userId, rows) {
         descripcion: r.descripcion || '',
         importe: num(r.importe),
         alicuota_iva: num(r.alicuotaIVA),
-        fecha_emision: fechaISO(r.fechaEmision),
+        // Sin fecha de emisión => se programa para hoy (se emite en la próxima
+        // corrida del scheduler). Así siempre se sabe cuándo va a salir.
+        fecha_emision: fechaISO(r.fechaEmision) || hoyISO(),
         fecha_servicio_desde: fechaISO(r.fechaServicioDesde),
         fecha_servicio_hasta: fechaISO(r.fechaServicioHasta),
         fecha_vencimiento: fechaISO(r.fechaVencimiento),
@@ -83,7 +92,7 @@ export async function guardarProgramadas(supabase, userId, rows) {
       errores.push({ fila: r.fila, error: e.message });
     }
   }
-  return { guardadas, errores };
+  return { guardadas, sinFecha, hoy: hoyISO(), errores };
 }
 
 // Guarda todas las facturas del resultado. Devuelve { guardadas, errores }.

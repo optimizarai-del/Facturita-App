@@ -61,7 +61,9 @@ export async function emitirProgramadasVencidas() {
   const { data: pendientes, error } = await svc
     .from('facturas').select('*')
     .eq('estado', 'programada')
-    .lte('fecha_emision', hoy)
+    // Vencidas (fecha <= hoy) o sin fecha (NULL): estas últimas se emiten ya,
+    // así no quedan colgadas para siempre.
+    .or(`fecha_emision.is.null,fecha_emision.lte.${hoy}`)
     .order('user_id');
   if (error) { console.error('Scheduler query error:', error.message); return { error: error.message }; }
   if (!pendientes?.length) return { emitidas: 0 };
