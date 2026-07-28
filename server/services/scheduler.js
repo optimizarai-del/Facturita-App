@@ -2,18 +2,28 @@ import cron from 'node-cron';
 import { supabaseService } from './supabase.js';
 import { getSettings } from './settings.js';
 import { procesarFacturas } from './facturador.js';
-import { enviarResumenEmisiones } from './mailer.js';
+import { mapCondicionPorDoc } from './persistencia.js';
+import { enviarResumenEmisiones, enviarAvisoFallos } from './mailer.js';
+import { log } from './log.js';
+
+const MAX_INTENTOS = 3; // reintentos antes de marcar una programada como error definitivo.
 
 // 'YYYY-MM-DD' -> yyyymmdd (number) para el facturador.
 function isoToYyyymmdd(iso) {
   if (!iso) return null;
   return Number(String(iso).slice(0, 10).replace(/-/g, ''));
 }
+// Fecha de HOY en Argentina (yyyy-mm-dd), sin depender del timezone del server.
 function hoyISO() {
-  return new Date().toISOString().slice(0, 10);
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
+}
+function hoyYyyymmdd() {
+  return Number(hoyISO().replace(/-/g, ''));
 }
 
 // Reconstruye una "fila" de Excel a partir de una factura programada.
+// La fecha del comprobante (CbteFch) se fija a HOY: emitir con la fecha programada
+// vieja haría que AFIP rechace el comprobante por estar fuera de su ventana permitida.
 function facturaARow(f, idx) {
   return {
     fila: idx + 1,
@@ -23,11 +33,18 @@ function facturaARow(f, idx) {
     concepto: f.concepto,
     descripcion: f.descripcion,
     importe: f.importe,
-    fechaEmision: isoToYyyymmdd(f.fecha_emision),
+    alicuotaIVA: f.alicuota_iva,
+    condicionIVAReceptor: f.condicion_receptor || null,
+    fechaEmision: hoyYyyymmdd(),
     fechaServicioDesde: isoToYyyymmdd(f.fecha_servicio_desde),
     fechaServicioHasta: isoToYyyymmdd(f.fecha_servicio_hasta),
     fechaVencimiento: isoToYyyymmdd(f.fecha_vencimiento),
   };
+}
+
+// Heurística: ¿el error de AFIP parece transitorio (conviene reintentar) o definitivo?
+function esTransitorio(msg) {
+  return /timeout|network|ECONN|socket|503|502|500|no disponible|temporar|inténtelo|intente/i.test(String(msg || ''));
 }
 
 // Procesa todas las facturas programadas cuya fecha de emisión ya llegó.
@@ -61,10 +78,28 @@ export async function emitirProgramadasVencidas() {
     try {
       const settings = await getSettings(svc, userId);
       if (!settings.cuit || !settings.accessToken) continue; // usuario sin AFIP configurado
-      const rows = facturas.map(facturaARow);
-      const { resultados } = await procesarFacturas(rows, settings);
+
+      // Resolver condición IVA de cada receptor desde los clientes guardados.
+      const condicionPorDoc = await mapCondicionPorDoc(svc, userId, facturas.map((f) => f.documento));
+      const facturasConCond = facturas.map((f) => ({
+        ...f,
+        condicion_receptor: condicionPorDoc[String(f.documento ?? '').replace(/\D/g, '')] || null,
+      }));
+
+      const rows = facturasConCond.map(facturaARow);
+
+      let resultados;
+      try {
+        ({ resultados } = await procesarFacturas(rows, settings));
+      } catch (e) {
+        // Falla a nivel batch (AFIP caído / sin cert): dejamos todo en 'programada'
+        // para reintentar en la próxima corrida. No se pierde nada.
+        log.warn('Scheduler: batch falló, se reintenta mañana', { userId, err: e.message });
+        continue;
+      }
 
       const emitidasOk = [];
+      const fallidas = [];
       for (let i = 0; i < facturas.length; i++) {
         const f = facturas[i];
         const r = resultados[i];
@@ -72,28 +107,38 @@ export async function emitirProgramadasVencidas() {
           await svc.from('facturas').update({
             estado: 'emitida', cae: r.cae, cae_vto: r.caeVto,
             nro_comprobante: r.nroComprobante, punto_venta: r.puntoVenta,
-            neto: r.neto, iva: r.iva, ambiente: settings.production ? 'producción' : 'homologación',
+            neto: r.neto, iva: r.iva, fecha_emision: hoyISO(),
+            ambiente: settings.production ? 'producción' : 'homologación',
           }).eq('id', f.id);
           emitidasOk.push({ ...f, cae: r.cae });
           totalEmitidas += 1;
         } else {
-          await svc.from('facturas').update({ estado: 'error', error_msg: r.error }).eq('id', f.id);
+          const intentos = (f.intentos || 0) + 1;
+          const definitivo = !esTransitorio(r.error) || intentos >= MAX_INTENTOS;
+          await svc.from('facturas').update({
+            estado: definitivo ? 'error' : 'programada',
+            error_msg: r.error, intentos,
+          }).eq('id', f.id);
+          if (definitivo) fallidas.push({ ...f, error: r.error });
         }
       }
 
-      // Notificación por mail del resumen del día.
+      const ambiente = settings.production ? 'producción' : 'homologación';
+      // Notificación por mail del resumen del día (éxitos).
       if (emitidasOk.length && settings.notifEmail) {
-        try {
-          await enviarResumenEmisiones(
-            settings.notifEmail, emitidasOk, settings.production ? 'producción' : 'homologación'
-          );
-        } catch (e) { console.error('Mail resumen falló:', e.message); }
+        try { await enviarResumenEmisiones(settings.notifEmail, emitidasOk, ambiente); }
+        catch (e) { log.error('Mail resumen falló', { userId, err: e.message }); }
+      }
+      // Aviso de fallos definitivos (para que el usuario no se entere tarde).
+      if (fallidas.length && settings.notifEmail) {
+        try { await enviarAvisoFallos(settings.notifEmail, fallidas, ambiente); }
+        catch (e) { log.error('Mail aviso de fallos falló', { userId, err: e.message }); }
       }
     } catch (e) {
-      console.error(`Scheduler usuario ${userId}:`, e.message);
+      log.error('Scheduler usuario falló', { userId, err: e.message });
     }
   }
-  console.log(`Scheduler: ${totalEmitidas} factura(s) programada(s) emitida(s).`);
+  log.info('Scheduler: corrida completa', { emitidas: totalEmitidas });
   return { emitidas: totalEmitidas };
 }
 
@@ -105,6 +150,6 @@ export function startScheduler() {
   }
   cron.schedule('0 9 * * *', () => {
     emitirProgramadasVencidas().catch((e) => console.error('Scheduler error:', e.message));
-  });
+  }, { timezone: 'America/Argentina/Buenos_Aires' });
   console.log('🕘 Scheduler activo: revisa facturas programadas todos los días a las 09:00.');
 }

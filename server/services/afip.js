@@ -19,6 +19,85 @@ export function getAfipClient(settings) {
   return new Afip(options);
 }
 
+// --- Padrón AFIP (constancia de inscripción) ---
+// Dado un CUIT, devuelve datos reales del contribuyente: razón social/nombre,
+// condición frente al IVA y domicilio. Solo funciona con CUIT (11 dígitos) y
+// requiere que el WS de padrón esté habilitado para el certificado.
+// Devuelve null si no se puede resolver (para que el front no rompa).
+export async function consultarPadron(settings, docRaw) {
+  const doc = String(docRaw ?? '').replace(/\D/g, '');
+  if (doc.length !== 11) return null; // solo CUIT/CUIL
+  const afip = getAfipClient(settings);
+
+  // El SDK expone varios padrones; usamos el A13 (el más disponible).
+  const registro = afip.RegisterScopeThirteen || afip.RegisterScopeFive || afip.RegisterScopeFour;
+  if (!registro?.getTaxpayerDetails) {
+    throw new Error('El web service de Padrón no está disponible en este certificado.');
+  }
+  let data;
+  try {
+    data = await registro.getTaxpayerDetails(Number(doc));
+  } catch (e) {
+    const msg = e?.response?.data?.message || e?.data?.message || e?.message || '';
+    // El padrón es un WS aparte: puede no estar autorizado en el cert o no existir
+    // en homologación. Damos un mensaje accionable en vez del error crudo del SDK.
+    throw new Error(
+      'No se pudo consultar el padrón de AFIP. El servicio de padrón puede no estar ' +
+      'habilitado para tu certificado o no estar disponible en homologación. ' +
+      'Podés completar los datos del cliente a mano.' + (msg ? ` (detalle: ${msg})` : '')
+    );
+  }
+  if (!data) return null;
+
+  const nombre = armarNombre(data);
+  const condicionIVA = derivarCondicionDesdePadron(data);
+  return {
+    documento: doc,
+    tipoDoc: 'CUIT',
+    nombre,
+    condicionIVA, // texto legible
+    condicionIVAId: CONDICION_IVA_ID[condicionIVA] ?? null,
+    domicilio: armarDomicilio(data),
+  };
+}
+
+function armarNombre(d) {
+  const p = d?.datosGenerales || d || {};
+  if (p.razonSocial) return String(p.razonSocial).trim();
+  const nom = [p.apellido, p.nombre].filter(Boolean).join(', ');
+  return nom || '';
+}
+
+function armarDomicilio(d) {
+  const dom = d?.datosGenerales?.domicilioFiscal || {};
+  return [dom.direccion, dom.localidad, dom.descripcionProvincia].filter(Boolean).join(', ');
+}
+
+// Deriva la condición IVA (texto) a partir de la respuesta del padrón.
+function derivarCondicionDesdePadron(d) {
+  if (d?.datosMonotributo) return 'Responsable Monotributo';
+  const rg = d?.datosRegimenGeneral;
+  if (rg) {
+    const impuestos = (rg.impuesto || []).map((i) => Number(i.idImpuesto));
+    // Impuesto 30 = IVA; si está inscripto en IVA => Responsable Inscripto.
+    if (impuestos.includes(30)) return 'Responsable Inscripto';
+    return 'IVA Sujeto Exento';
+  }
+  return 'Consumidor Final';
+}
+
+// Mapa condición IVA (texto) -> Id de AFIP (RG 5616, campo CondicionIVAReceptorId).
+export const CONDICION_IVA_ID = {
+  'Responsable Inscripto': 1,
+  'IVA Sujeto Exento': 4,
+  'Consumidor Final': 5,
+  'Responsable Monotributo': 6,
+  'Sujeto no Categorizado': 7,
+  'Proveedor del Exterior': 8,
+  'Cliente del Exterior': 9,
+  'IVA No Alcanzado': 15,
+};
+
 // Prueba la conexión consultando el estado de los servidores de AFIP.
 export async function testConnection(settings) {
   if (!settings.accessToken) {
@@ -60,5 +139,15 @@ export async function generarCertificado(settings, { password, username, alias }
     wsauth = `advertencia: ${e?.data?.message || e.message}`;
   }
 
-  return { ok: true, alias: certAlias, wsauth, cert: cert.cert, key: cert.key };
+  // Autorizar también el padrón (constancia de inscripción) para el autofill de clientes.
+  // Es best-effort: si falla o no está disponible, no rompe la generación del cert.
+  let padronAuth = 'omitida';
+  try {
+    await afip.CreateWSAuth(user, password, certAlias, 'ws_sr_constancia_inscripcion');
+    padronAuth = 'ok';
+  } catch (e) {
+    padronAuth = `advertencia: ${e?.data?.message || e.message}`;
+  }
+
+  return { ok: true, alias: certAlias, wsauth, padronAuth, cert: cert.cert, key: cert.key };
 }

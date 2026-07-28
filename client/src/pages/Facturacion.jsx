@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { apiFetch } from '../supabaseClient.js';
 import Config from './Config.jsx';
 
@@ -47,7 +47,7 @@ export default function Facturacion() {
       if (!r.ok) { setEstado({ tipo: 'err', txt: d.error }); return; }
       setResultado(d);
       const { realizadas, pendientes } = d.resumen;
-      setEstado({ tipo: pendientes === 0 ? 'ok' : 'err', txt: `${realizadas} realizada(s) · ${pendientes} pendiente(s)` });
+      setEstado({ tipo: pendientes === 0 ? 'ok' : 'err', txt: `${realizadas} realizada(s) · ${pendientes} con error` });
     } catch { setEstado({ tipo: 'err', txt: 'Error de red al emitir.' }); }
     finally { setCargando(false); }
   }
@@ -142,7 +142,7 @@ export default function Facturacion() {
               <div className="chips">
                 <div className="chip"><b>{resultado.resumen.total}</b><span>Total</span></div>
                 <div className="chip ok"><b>{resultado.resumen.realizadas}</b><span>Realizadas</span></div>
-                <div className="chip err"><b>{resultado.resumen.pendientes}</b><span>Pendientes</span></div>
+                <div className="chip err"><b>{resultado.resumen.pendientes}</b><span>Con error</span></div>
               </div>
               <button className="btn btn-ghost sm" onClick={descargarResultados}>⬇️ Excel de resultados</button>
               <div className="tabla-wrap">

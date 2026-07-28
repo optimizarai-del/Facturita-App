@@ -1,20 +1,24 @@
 import 'dotenv/config';
 import express from 'express';
 import multer from 'multer';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { requireAuth } from './middleware/auth.js';
+import { log } from './services/log.js';
+import { cifradoDisponible } from './services/crypto.js';
 import { buildTemplateWorkbook } from './services/template.js';
 import { getSettings, saveSettings } from './services/settings.js';
-import { testConnection, generarCertificado } from './services/afip.js';
+import { testConnection, generarCertificado, consultarPadron } from './services/afip.js';
 import { readFacturasFromBuffer } from './services/reader.js';
 import { procesarFacturas, validarFilas } from './services/facturador.js';
-import { guardarFacturas, guardarProgramadas } from './services/persistencia.js';
+import { guardarFacturas, guardarProgramadas, mapCondicionPorDoc } from './services/persistencia.js';
 import { enviarResumenEmisiones } from './services/mailer.js';
 import { startScheduler } from './services/scheduler.js';
 import { guardarResultados, buildResultadosWorkbook } from './services/exporter.js';
 import { generarPDFs } from './services/pdf.js';
-import { getAuthUrl, exchangeCode, subirCarpetaADrive } from './services/drive.js';
+import { getAuthUrl, exchangeCode, verifyState, subirCarpetaADrive } from './services/drive.js';
 
 // Último resultado por usuario, para re-descargar el Excel.
 const ultimoResultado = new Map();
@@ -27,8 +31,39 @@ const upload = multer({
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 3000;
+const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
 
-app.use(express.json());
+// --- Hardening ---
+// helmet: cabeceras de seguridad. Se desactiva la CSP porque la página de callback
+// de Drive usa un <script> inline (postMessage) y el SPA servido en producción trae
+// sus propios assets; crossOriginResourcePolicy relajado para las descargas en dev.
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+}));
+
+// CORS mínimo: solo el origen del frontend, con Authorization.
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin === CLIENT_ORIGIN) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Vary', 'Origin');
+  }
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
+
+app.use(express.json({ limit: '1mb' }));
+
+// Rate limit general y otro más estricto para operaciones sensibles/costosas.
+const apiLimiter = rateLimit({ windowMs: 60_000, max: 120, standardHeaders: true, legacyHeaders: false });
+const sensitiveLimiter = rateLimit({
+  windowMs: 60_000, max: 10, standardHeaders: true, legacyHeaders: false,
+  message: { error: 'Demasiados intentos. Esperá un minuto y reintentá.' },
+});
+app.use('/api/', apiLimiter);
 
 // Verificar el login.
 app.get('/api/me', requireAuth, (req, res) => {
@@ -103,6 +138,23 @@ app.post('/api/config', requireAuth, async (req, res) => {
     if (driveClientId !== undefined) patch.driveClientId = String(driveClientId).trim();
     if (driveClientSecret !== undefined) patch.driveClientSecret = String(driveClientSecret).trim();
     if (driveFolderId !== undefined) patch.driveFolderId = String(driveFolderId).trim();
+
+    // Gate de producción: no permitir emitir facturas reales sin las credenciales
+    // necesarias (certificado + clave + access token de AFIP SDK).
+    if (patch.production === true) {
+      const actual = await getSettings(req.supabase, req.userId);
+      const accessToken = patch.accessToken !== undefined ? patch.accessToken : actual.accessToken;
+      const faltan = [];
+      if (!actual.cert || !actual.key) faltan.push('certificado digital');
+      if (!accessToken) faltan.push('access token de AFIP SDK');
+      if (!(patch.cuit || actual.cuit)) faltan.push('CUIT');
+      if (faltan.length) {
+        return res.status(400).json({
+          error: `Para activar producción (facturas reales) falta: ${faltan.join(', ')}. Configuralo y probá la conexión primero.`,
+        });
+      }
+    }
+
     const next = await saveSettings(req.supabase, req.userId, patch);
     res.json({ ok: true, cuit: next.cuit, production: next.production });
   } catch (err) {
@@ -112,7 +164,7 @@ app.post('/api/config', requireAuth, async (req, res) => {
 });
 
 // Probar conexión con AFIP.
-app.post('/api/afip/test', requireAuth, async (req, res) => {
+app.post('/api/afip/test', sensitiveLimiter, requireAuth, async (req, res) => {
   try {
     const settings = await getSettings(req.supabase, req.userId);
     const result = await testConnection(settings);
@@ -124,7 +176,7 @@ app.post('/api/afip/test', requireAuth, async (req, res) => {
 });
 
 // Generar certificado con AFIP SDK (clave fiscal transitoria; guarda cert+key).
-app.post('/api/afip/cert', requireAuth, async (req, res) => {
+app.post('/api/afip/cert', sensitiveLimiter, requireAuth, async (req, res) => {
   try {
     const { password, username, alias } = req.body || {};
     const settings = await getSettings(req.supabase, req.userId);
@@ -136,6 +188,27 @@ app.post('/api/afip/cert', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('Error generando certificado:', err?.message);
     res.status(502).json({ ok: false, error: err?.data?.message || err.message || 'No se pudo generar el certificado' });
+  }
+});
+
+// Consulta el padrón AFIP por CUIT y devuelve datos del contribuyente para
+// autocompletar el alta de cliente (nombre, condición IVA, domicilio).
+app.get('/api/padron', sensitiveLimiter, requireAuth, async (req, res) => {
+  try {
+    const doc = String(req.query.doc || '').replace(/\D/g, '');
+    if (doc.length !== 11) {
+      return res.status(400).json({ error: 'El padrón solo se puede consultar con un CUIT de 11 dígitos.' });
+    }
+    const settings = await getSettings(req.supabase, req.userId);
+    if (!settings.accessToken || !settings.cert || !settings.key) {
+      return res.status(400).json({ error: 'Configurá el certificado y el access token de AFIP para consultar el padrón.' });
+    }
+    const datos = await consultarPadron(settings, doc);
+    if (!datos) return res.status(404).json({ error: 'No se encontró el CUIT en el padrón.' });
+    res.json({ ok: true, ...datos });
+  } catch (err) {
+    log.error('Consulta de padrón falló', { err: err.message });
+    res.status(502).json({ error: err.message || 'No se pudo consultar el padrón de AFIP.' });
   }
 });
 
@@ -155,9 +228,11 @@ app.get('/api/drive/callback', async (req, res) => {
   const { code, error, state } = req.query;
   if (error) return res.send(paginaCierre(`No se autorizó el acceso: ${error}`, false));
   try {
-    await exchangeCode(String(code), String(state));
+    const userId = verifyState(state); // valida firma + vencimiento (anti-CSRF)
+    await exchangeCode(String(code), userId);
     res.send(paginaCierre('✅ Google Drive conectado. Ya podés cerrar esta pestaña.', true));
   } catch (err) {
+    log.error('Drive callback falló', { err: err.message });
     res.send(paginaCierre(`Error al conectar: ${err.message}`, false));
   }
 });
@@ -168,7 +243,7 @@ function paginaCierre(msg, ok) {
     .c{text-align:center;padding:32px;border-radius:16px;background:#151821;max-width:420px}
     .m{color:${ok ? '#4fe0a6' : '#ff7a7a'};font-size:1.05rem}</style></head>
     <body><div class="c"><div class="m">${msg}</div></div>
-    <script>try{window.opener&&window.opener.postMessage('drive-'+${ok},'*')}catch(e){}</script>
+    <script>try{window.opener&&window.opener.postMessage('drive-'+${ok},${JSON.stringify(CLIENT_ORIGIN)})}catch(e){}</script>
     </body></html>`;
 }
 
@@ -200,13 +275,24 @@ app.post('/api/programar', requireAuth, upload.single('archivo'), async (req, re
 });
 
 // Subir Excel y emitir las facturas.
-app.post('/api/facturar', requireAuth, upload.single('archivo'), async (req, res) => {
+app.post('/api/facturar', sensitiveLimiter, requireAuth, upload.single('archivo'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No se recibió ningún archivo Excel.' });
     const rows = await readFacturasFromBuffer(req.file.buffer);
     if (!rows.length) return res.status(400).json({ error: 'El Excel no tiene filas de facturas para procesar.' });
 
     const settings = await getSettings(req.supabase, req.userId);
+
+    // Enriquecer cada fila con la condición IVA real del cliente (traída del padrón
+    // al darlo de alta) para que AFIP no rechace por condición de receptor incorrecta.
+    const condicionPorDoc = await mapCondicionPorDoc(
+      req.supabase, req.userId, rows.map((r) => r.documento)
+    );
+    for (const r of rows) {
+      const doc = String(r.documento ?? '').replace(/\D/g, '');
+      if (doc && condicionPorDoc[doc]) r.condicionIVAReceptor = condicionPorDoc[doc];
+    }
+
     const result = await procesarFacturas(rows, settings);
     ultimoResultado.set(req.userId, result);
 

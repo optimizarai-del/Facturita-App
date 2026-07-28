@@ -46,3 +46,34 @@ export async function enviarResumenEmisiones(to, emitidas, ambiente) {
   });
   return { enviado: true, cantidad: emitidas.length };
 }
+
+// Avisa al usuario que algunas facturas PROGRAMADAS fallaron (para que actúe).
+export async function enviarAvisoFallos(to, fallidas, ambiente) {
+  const tx = transporter();
+  if (!tx) return { skipped: true, motivo: 'SMTP no configurado' };
+  if (!to || !fallidas.length) return { skipped: true };
+
+  const filas = fallidas.map((f) =>
+    `<tr><td>${f.tipo || ''}</td><td>${f.nombre_cliente || f.nombre || ''}</td>
+     <td style="text-align:right">$ ${Number(f.importe || 0).toLocaleString('es-AR')}</td>
+     <td style="color:#c0362c">${f.error || 'Error'}</td></tr>`
+  ).join('');
+
+  const html = `
+    <div style="font-family:system-ui;max-width:560px">
+      <h2>FacturitaApp — ⚠️ ${fallidas.length} factura(s) programada(s) no se pudieron emitir</h2>
+      <p>Ambiente: <b>${ambiente}</b>. Revisá los datos y volvé a programarlas o emitilas manualmente.</p>
+      <table style="width:100%;border-collapse:collapse;font-size:14px" border="1" cellpadding="6">
+        <thead><tr><th>Tipo</th><th>Cliente</th><th>Importe</th><th>Motivo</th></tr></thead>
+        <tbody>${filas}</tbody>
+      </table>
+    </div>`;
+
+  await tx.sendMail({
+    from: MAIL_FROM || SMTP_USER,
+    to,
+    subject: `FacturitaApp: ⚠️ ${fallidas.length} programada(s) fallaron`,
+    html,
+  });
+  return { enviado: true, cantidad: fallidas.length };
+}

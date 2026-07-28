@@ -2,6 +2,11 @@
 // Se usa el cliente Supabase con RLS del usuario (req.supabase), así cada uno
 // solo accede a sus propias filas.
 
+import { encrypt, decrypt } from './crypto.js';
+
+// Campos sensibles que se cifran at-rest (por clave de app, no de tabla).
+const SENSIBLES = new Set(['accessToken', 'cert', 'key', 'driveClientSecret', 'driveRefreshToken']);
+
 // Devuelve el settings del usuario con las MISMAS keys que usaba el código viejo,
 // para que facturador/pdf/exporter/drive sigan funcionando sin cambios de forma.
 export async function getSettings(supabase, userId) {
@@ -27,16 +32,16 @@ export async function getSettings(supabase, userId) {
     destinoSalida: p.destino_salida || 'local',
     carpetaSalida: p.carpeta_local || '',
     notifEmail: p.notif_email || '',
-    // credenciales AFIP
+    // credenciales AFIP (descifradas)
     production: a.production === true,
-    accessToken: a.access_token || '',
-    cert: a.cert || '',
-    key: a.key || '',
+    accessToken: decrypt(a.access_token) || '',
+    cert: decrypt(a.cert) || '',
+    key: decrypt(a.key) || '',
     certAlias: a.cert_alias || '',
-    // credenciales Drive
+    // credenciales Drive (descifradas)
     driveClientId: d.client_id || '',
-    driveClientSecret: d.client_secret || '',
-    driveRefreshToken: d.refresh_token || '',
+    driveClientSecret: decrypt(d.client_secret) || '',
+    driveRefreshToken: decrypt(d.refresh_token) || '',
     driveFolderId: d.folder_id || '',
   };
 }
@@ -73,7 +78,8 @@ export async function saveSettings(supabase, userId, patch) {
   const profileUpd = {};
   const afipUpd = {};
   const driveUpd = {};
-  for (const [k, v] of Object.entries(patch)) {
+  for (const [k, rawV] of Object.entries(patch)) {
+    const v = SENSIBLES.has(k) ? encrypt(rawV) : rawV;
     if (k in PROFILE_MAP) profileUpd[PROFILE_MAP[k]] = v;
     else if (k in AFIP_MAP) afipUpd[AFIP_MAP[k]] = v;
     else if (k in DRIVE_MAP) driveUpd[DRIVE_MAP[k]] = v;

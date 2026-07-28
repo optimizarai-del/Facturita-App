@@ -3,9 +3,47 @@ import { getAfipClient } from './afip.js';
 // --- Tablas de mapeo AFIP ---
 const TIPO_CBTE = { A: 1, B: 6, C: 11 }; // Factura A / B / C
 const CONCEPTO = { productos: 1, servicios: 2, ambos: 3 };
-const IVA_21_ID = 5; // Id de alícuota 21% en AFIP
+
+// Alícuotas de IVA soportadas: % -> Id de AFIP (tabla FEParamGetTiposIva).
+const ALICUOTA_IVA_ID = { 0: 3, 10.5: 4, 21: 5, 27: 6, 5: 8, 2.5: 9 };
+const IVA_21_ID = 5;
+
+// Condición IVA del receptor (RG 5616) por texto -> Id de AFIP.
+const CONDICION_ID = {
+  'responsable inscripto': 1,
+  'iva sujeto exento': 4,
+  'exento': 4,
+  'consumidor final': 5,
+  'responsable monotributo': 6,
+  'monotributo': 6,
+};
+
 // Umbral aproximado por el cual AFIP exige identificar al receptor (cambia periódicamente).
-const UMBRAL_IDENTIFICAR = 344000;
+// Configurable por env porque AFIP lo actualiza.
+const UMBRAL_IDENTIFICAR = Number(process.env.UMBRAL_IDENTIFICAR) || 344000;
+
+// Parsea la alícuota de IVA de la fila. Devuelve { rate, id } o lanza si es inválida.
+// Vacío = 21% (default histórico). "exento"/"0" = 0%.
+function parseAlicuota(raw) {
+  const s = String(raw ?? '').trim().toLowerCase();
+  if (s === '') return { rate: 21, id: ALICUOTA_IVA_ID[21] };
+  if (s === 'exento' || s === 'exenta') return { rate: 0, id: ALICUOTA_IVA_ID[0], exento: true };
+  const n = Number(s.replace('%', '').replace(',', '.'));
+  if (!Number.isFinite(n) || !(n in ALICUOTA_IVA_ID)) {
+    throw new Error(`Alícuota de IVA inválida: "${raw}" (permitidas: 0, 2.5, 5, 10.5, 21, 27 o "exento")`);
+  }
+  return { rate: n, id: ALICUOTA_IVA_ID[n] };
+}
+
+// Resuelve el Id de condición IVA del receptor. Prioridad:
+//   1) condición explícita en la fila (traída del padrón / guardada del cliente)
+//   2) heurística por tipo de documento
+function condicionReceptorId(row, docTipo) {
+  const explicita = String(row?.condicionIVAReceptor ?? '').trim().toLowerCase();
+  if (explicita && CONDICION_ID[explicita]) return CONDICION_ID[explicita];
+  if (docTipo === 80) return 1; // CUIT sin dato -> Responsable Inscripto (mejor esfuerzo)
+  return 5; // DNI / Consumidor Final
+}
 
 // Valida las filas SIN emitir. Devuelve { total, cantidad, problemas: [{fila, motivo, nivel}] }.
 export function validarFilas(rows) {
@@ -46,12 +84,6 @@ function mapDocumento(docRaw) {
   return { DocTipo: 96, DocNro: Number(doc) }; // DNI
 }
 
-// Condición IVA del receptor (RG 5616, requerido). Heurística por tipo de doc.
-function condicionIVAReceptor(docTipo) {
-  if (docTipo === 80) return 1; // CUIT -> Responsable Inscripto (asunción)
-  return 5; // DNI / Consumidor Final
-}
-
 function yyyymmdd(date = new Date()) {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -84,6 +116,14 @@ export function buildVoucherData(row, settings) {
 
   const { DocTipo, DocNro } = mapDocumento(row.documento);
 
+  // Regla AFIP: la Factura A exige receptor identificado con CUIT (Responsable
+  // Inscripto / Monotributo). Sin CUIT, AFIP la rechaza: lo cortamos antes.
+  if (CbteTipo === TIPO_CBTE.A && DocTipo !== 80) {
+    throw new Error('La Factura A requiere el CUIT del receptor (no se puede emitir a DNI o Consumidor Final).');
+  }
+
+  const condicionRecId = condicionReceptorId(row, DocTipo);
+
   const hoy = yyyymmdd();
   // Fecha del comprobante: la de la fila si vino, si no hoy.
   const fechaCbte = row.fechaEmision || hoy;
@@ -101,7 +141,7 @@ export function buildVoucherData(row, settings) {
     ImpTrib: 0, // otros tributos
     MonId: 'PES',
     MonCotiz: 1,
-    CondicionIVAReceptorId: condicionIVAReceptor(DocTipo),
+    CondicionIVAReceptorId: condicionRecId,
   };
 
   if (CbteTipo === TIPO_CBTE.C) {
@@ -109,12 +149,22 @@ export function buildVoucherData(row, settings) {
     data.ImpNeto = importe;
     data.ImpIVA = 0;
   } else {
-    // Factura A/B: se asume IVA 21% incluido en el total.
-    const neto = round2(importe / 1.21);
-    const iva = round2(importe - neto);
-    data.ImpNeto = neto;
-    data.ImpIVA = iva;
-    data.Iva = [{ Id: IVA_21_ID, BaseImp: neto, Importe: iva }];
+    // Factura A/B: IVA según la alícuota de la fila (default 21%), incluido en el total.
+    const { rate, id, exento } = parseAlicuota(row.alicuotaIVA);
+    if (exento || rate === 0) {
+      // Operación exenta / gravada al 0%: sin IVA. El neto va como no gravado
+      // para que ImpTotal = ImpNeto (AFIP no acepta Iva vacío con importe).
+      data.ImpNeto = importe;
+      data.ImpIVA = 0;
+      data.Iva = [{ Id: id, BaseImp: importe, Importe: 0 }];
+    } else {
+      const factor = 1 + rate / 100;
+      const neto = round2(importe / factor);
+      const iva = round2(importe - neto); // preserva el total; dentro de la tolerancia de AFIP
+      data.ImpNeto = neto;
+      data.ImpIVA = iva;
+      data.Iva = [{ Id: id, BaseImp: neto, Importe: iva }];
+    }
   }
 
   // Para servicios (o ambos) AFIP exige fechas del período de servicio.
@@ -136,6 +186,7 @@ async function emitirUna(afip, row, settings) {
     documento: row.documento,
     tipo: row.tipo,
     importe: row.importe,
+    alicuotaIVA: row.alicuotaIVA,
   };
   try {
     const data = buildVoucherData(row, settings);

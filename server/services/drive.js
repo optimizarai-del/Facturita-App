@@ -1,12 +1,43 @@
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { google } from 'googleapis';
 import { supabaseService } from './supabase.js';
+import { encrypt, decrypt } from './crypto.js';
 
 // URI de redirección OAuth (debe coincidir con la registrada en Google Cloud Console).
-const REDIRECT_URI = 'http://localhost:3000/api/drive/callback';
+// Configurable por env para producción (dominio real).
+const REDIRECT_URI = process.env.OAUTH_REDIRECT_URI || 'http://localhost:3000/api/drive/callback';
 const SCOPES = ['https://www.googleapis.com/auth/drive.file'];
+
+// --- State firmado para el OAuth (anti-CSRF / confused deputy) ---
+// El callback de Google no lleva el JWT del usuario, así que el userId viaja en el
+// `state`. Para que no sea falsificable, lo firmamos con HMAC y le ponemos vencimiento.
+const STATE_SECRET = process.env.OAUTH_STATE_SECRET || process.env.APP_ENCRYPTION_KEY || '';
+const STATE_TTL_MS = 10 * 60 * 1000; // 10 minutos
+
+function signState(userId) {
+  const payload = `${userId}.${Date.now()}`;
+  const sig = crypto.createHmac('sha256', STATE_SECRET).update(payload).digest('base64url');
+  return Buffer.from(`${payload}.${sig}`).toString('base64url');
+}
+
+// Verifica el state y devuelve el userId, o lanza si es inválido/vencido.
+export function verifyState(state) {
+  if (!STATE_SECRET) throw new Error('Falta OAUTH_STATE_SECRET en el server.');
+  let decoded;
+  try { decoded = Buffer.from(String(state), 'base64url').toString('utf8'); }
+  catch { throw new Error('State inválido.'); }
+  const [userId, ts, sig] = decoded.split('.');
+  if (!userId || !ts || !sig) throw new Error('State malformado.');
+  const expected = crypto.createHmac('sha256', STATE_SECRET).update(`${userId}.${ts}`).digest('base64url');
+  const a = Buffer.from(sig);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) throw new Error('Firma del state inválida.');
+  if (Date.now() - Number(ts) > STATE_TTL_MS) throw new Error('El pedido de autorización venció. Reintentá.');
+  return userId;
+}
 
 // MIME types por extensión para subir con el tipo correcto.
 const MIME = {
@@ -34,7 +65,7 @@ export function getAuthUrl(settings, userId) {
     access_type: 'offline', // para obtener refresh token
     prompt: 'consent', // fuerza refresh token aunque ya haya autorizado
     scope: SCOPES,
-    state: userId,
+    state: signState(userId), // firmado, no el userId crudo
   });
 }
 
@@ -48,7 +79,7 @@ export async function exchangeCode(code, userId) {
 
   const client = oauthClient({
     driveClientId: cred.client_id,
-    driveClientSecret: cred.client_secret,
+    driveClientSecret: decrypt(cred.client_secret), // guardado cifrado
   });
   const { tokens } = await client.getToken(code);
   if (!tokens.refresh_token) {
@@ -56,7 +87,7 @@ export async function exchangeCode(code, userId) {
   }
   const { error } = await svc
     .from('drive_credentials')
-    .update({ refresh_token: tokens.refresh_token, updated_at: new Date().toISOString() })
+    .update({ refresh_token: encrypt(tokens.refresh_token), updated_at: new Date().toISOString() })
     .eq('user_id', userId);
   if (error) throw new Error(error.message);
   return { ok: true };

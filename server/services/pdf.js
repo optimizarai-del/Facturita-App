@@ -51,6 +51,10 @@ export async function buildFacturaHTML(r, settings) {
   const docLabel = DOC_LABEL[r.docTipo] || 'Doc';
   const docVal = r.docTipo === 99 ? '—' : r.docNro;
   const mostrarIVA = r.tipoCbte !== 11 && Number(r.iva) > 0;
+  // Alícuota real: la de la fila si vino, o inferida del neto/IVA.
+  const alicuota = Number(r.alicuotaIVA) > 0
+    ? Number(r.alicuotaIVA)
+    : (Number(r.neto) > 0 ? Math.round((Number(r.iva) / Number(r.neto)) * 100) : 21);
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
     * { font-family: Arial, sans-serif; box-sizing: border-box; }
@@ -121,7 +125,7 @@ export async function buildFacturaHTML(r, settings) {
     <table class="totales">
       ${mostrarIVA ? `
         <tr><td class="lbl">Neto gravado:</td><td>$ ${money(r.neto)}</td></tr>
-        <tr><td class="lbl">IVA 21%:</td><td>$ ${money(r.iva)}</td></tr>` : ''}
+        <tr><td class="lbl">IVA ${alicuota}%:</td><td>$ ${money(r.iva)}</td></tr>` : ''}
       <tr><td class="lbl total-final">TOTAL:</td><td class="total-final">$ ${money(r.importeNum)}</td></tr>
     </table>
 
@@ -160,7 +164,7 @@ async function descargarPDF(file, destino) {
 // Genera un PDF por cada comprobante emitido con éxito y lo guarda en la carpeta.
 // Devuelve { generados, errores }.
 export async function generarPDFs(resultados, settings, carpeta) {
-  const afip = await getAfipClient();
+  const afip = getAfipClient(settings);
   const oks = resultados.filter((r) => r.estado === 'ok');
 
   let generados = 0;

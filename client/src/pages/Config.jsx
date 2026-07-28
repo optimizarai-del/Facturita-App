@@ -35,8 +35,23 @@ export default function Config() {
     const r = await apiFetch('/api/config', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
     });
-    setEstado(r.ok ? { tipo: 'ok', txt: '✅ Guardado.' } : { tipo: 'err', txt: 'No se pudo guardar.' });
+    let d = {};
+    try { d = await r.json(); } catch { /* sin body */ }
+    setEstado(r.ok ? { tipo: 'ok', txt: '✅ Guardado.' } : { tipo: 'err', txt: d.error || 'No se pudo guardar.' });
     if (r.ok) { setToken(''); cargar(); }
+    return r.ok;
+  }
+
+  // Activar producción exige confirmación explícita (emite facturas reales).
+  function toggleProduccion(e) {
+    const activar = e.target.checked;
+    if (activar) {
+      const ok = window.confirm(
+        '⚠️ Vas a activar PRODUCCIÓN. Las facturas que emitas van a tener validez fiscal real ante AFIP y NO se pueden anular desde acá.\n\n¿Confirmás?'
+      );
+      if (!ok) return; // no cambia el toggle
+    }
+    setForm({ ...form, production: activar });
   }
 
   async function probar() {
@@ -91,7 +106,7 @@ export default function Config() {
       <label>Access token de AFIP SDK {c.tieneAccessToken && <span className="muted">(guardado)</span>}</label>
       <input value={token} onChange={(e) => setToken(e.target.value)} placeholder={c.tieneAccessToken ? '•••••• (dejá vacío para no cambiar)' : 'Pegá tu access token'} />
       <label className="tgl" style={{ marginTop: 12 }}>
-        <input type="checkbox" checked={form.production} onChange={set('production')} /> Usar producción (facturas reales)
+        <input type="checkbox" checked={form.production} onChange={toggleProduccion} /> Usar producción (facturas reales)
       </label>
 
       <h3>Destino de salida</h3>

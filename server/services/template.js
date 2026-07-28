@@ -49,6 +49,8 @@ export async function buildTemplateWorkbook() {
     '• Concepto: Productos, Servicios o Ambos.',
     '• Descripción: qué se factura (texto libre).',
     '• Importe total: monto final con IVA incluido (para Factura C es el total sin IVA).',
+    '• IVA %: alícuota del IVA (21, 10.5, 27, 0 o "exento"). Vacío = 21%. En Factura C se ignora.',
+    '• Factura A: el cliente debe tener CUIT (no se puede emitir a DNI ni Consumidor Final).',
     '',
     'No cambies los nombres de las columnas ni el orden.',
   ];

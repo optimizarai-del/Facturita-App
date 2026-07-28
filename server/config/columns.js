@@ -45,6 +45,13 @@ export const COLUMNS = [
     required: true,
   },
   {
+    key: 'alicuotaIVA',
+    header: 'IVA % (21/10.5/27/0 o exento)',
+    width: 26,
+    ejemplo: 21,
+    required: false, // vacío = 21% (para A/B). En Factura C se ignora.
+  },
+  {
     key: 'fechaEmision',
     header: 'Fecha de emisión (dd/mm/aaaa)',
     width: 22,

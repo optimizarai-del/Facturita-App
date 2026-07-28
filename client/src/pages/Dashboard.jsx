@@ -4,9 +4,12 @@ import { supabase } from '../supabaseClient.js';
 const money = (n) => Number(n || 0).toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
 const fmtFecha = (d) => d ? d.split('-').reverse().join('/') : '-';
 
+const PAGINA = 50;
+
 export default function Dashboard() {
   const [facturas, setFacturas] = useState(null);
   const [filtro, setFiltro] = useState('todas'); // todas | emitida | error | programada
+  const [visibles, setVisibles] = useState(PAGINA);
 
   useEffect(() => {
     supabase.from('facturas').select('*').order('created_at', { ascending: false }).limit(500)
@@ -32,6 +35,9 @@ export default function Dashboard() {
     const f = facturas || [];
     return filtro === 'todas' ? f : f.filter((x) => x.estado === filtro);
   }, [facturas, filtro]);
+
+  // Reset del paginado al cambiar de filtro.
+  useEffect(() => { setVisibles(PAGINA); }, [filtro]);
 
   if (!facturas) return <div className="card"><div className="spinner-lg" /></div>;
 
@@ -60,7 +66,7 @@ export default function Dashboard() {
             <table>
               <thead><tr><th>Fecha</th><th>Cliente</th><th>Tipo</th><th>N°</th><th>Importe</th><th>Estado</th></tr></thead>
               <tbody>
-                {filtradas.map((f) => (
+                {filtradas.slice(0, visibles).map((f) => (
                   <tr key={f.id}>
                     <td>{fmtFecha(f.fecha_emision)}</td>
                     <td>{f.nombre_cliente || '-'}</td>
@@ -72,6 +78,13 @@ export default function Dashboard() {
                 ))}
               </tbody>
             </table>
+            {filtradas.length > visibles && (
+              <div className="row" style={{ justifyContent: 'center' }}>
+                <button className="btn btn-ghost sm" onClick={() => setVisibles((v) => v + PAGINA)}>
+                  Ver más ({filtradas.length - visibles} restantes)
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

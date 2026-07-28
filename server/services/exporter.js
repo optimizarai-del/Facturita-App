@@ -43,7 +43,7 @@ export async function buildResultadosWorkbook(result) {
       documento: r.documento || '',
       tipo: r.tipo || '',
       importe: Number(String(r.importe).replace(',', '.')) || r.importe,
-      estadoTxt: ok ? 'REALIZADA' : 'PENDIENTE',
+      estadoTxt: ok ? 'REALIZADA' : 'ERROR',
       comprobante: ok ? `${r.puntoVenta}-${String(r.nroComprobante).padStart(8, '0')}` : '',
       cae: ok ? r.cae : '',
       caeVto: ok ? r.caeVto : '',
@@ -64,7 +64,7 @@ export async function buildResultadosWorkbook(result) {
     ['Ambiente', resumen.ambiente],
     ['Total', resumen.total],
     ['Realizadas', resumen.realizadas],
-    ['Pendientes', resumen.pendientes],
+    ['Con error', resumen.pendientes],
   ];
   filas.forEach((f, i) => {
     const row = res.getRow(i + 1);

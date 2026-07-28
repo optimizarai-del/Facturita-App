@@ -17,7 +17,7 @@ function num(v) {
 }
 
 // Busca o crea el cliente por documento; devuelve su id (o null si no hay documento).
-async function upsertCliente(supabase, userId, nombre, documento) {
+async function upsertCliente(supabase, userId, nombre, documento, condicionIVA) {
   const doc = String(documento ?? '').replace(/\D/g, '');
   if (!doc) return null;
   const { data: existente } = await supabase
@@ -26,10 +26,26 @@ async function upsertCliente(supabase, userId, nombre, documento) {
   const tipoDoc = doc.length === 11 ? 'CUIT' : 'DNI';
   const { data, error } = await supabase
     .from('clientes')
-    .insert({ user_id: userId, nombre: nombre || 'Sin nombre', documento: doc, tipo_doc: tipoDoc })
+    .insert({
+      user_id: userId, nombre: nombre || 'Sin nombre', documento: doc, tipo_doc: tipoDoc,
+      condicion_iva: condicionIVA || '',
+    })
     .select('id').single();
   if (error) return null; // no bloquea la persistencia de la factura
   return data.id;
+}
+
+// Devuelve un mapa documento -> condición IVA (texto) de los clientes del usuario,
+// para resolver la condición del receptor en la emisión sin volver a consultar el padrón.
+export async function mapCondicionPorDoc(supabase, userId, documentos) {
+  const docs = [...new Set(documentos.map((d) => String(d ?? '').replace(/\D/g, '')).filter(Boolean))];
+  if (!docs.length) return {};
+  const { data } = await supabase
+    .from('clientes').select('documento, condicion_iva')
+    .eq('user_id', userId).in('documento', docs);
+  const map = {};
+  for (const c of data || []) if (c.condicion_iva) map[c.documento] = c.condicion_iva;
+  return map;
 }
 
 const CONCEPTO_NUM_TXT = { productos: 'Productos', servicios: 'Servicios', ambos: 'Ambos' };
@@ -52,6 +68,7 @@ export async function guardarProgramadas(supabase, userId, rows) {
         concepto: CONCEPTO_NUM_TXT[conceptoKey] || r.concepto || null,
         descripcion: r.descripcion || '',
         importe: num(r.importe),
+        alicuota_iva: num(r.alicuotaIVA),
         fecha_emision: fechaISO(r.fechaEmision),
         fecha_servicio_desde: fechaISO(r.fechaServicioDesde),
         fecha_servicio_hasta: fechaISO(r.fechaServicioHasta),
@@ -87,6 +104,7 @@ export async function guardarFacturas(supabase, userId, resultados, ambiente) {
         concepto: ok ? (CONCEPTO_TXT[r.concepto] || null) : null,
         descripcion: r.descripcion || '',
         importe: num(r.importeNum ?? r.importe),
+        alicuota_iva: num(r.alicuotaIVA),
         neto: ok ? num(r.neto) : null,
         iva: ok ? num(r.iva) : null,
         punto_venta: ok ? r.puntoVenta : null,
