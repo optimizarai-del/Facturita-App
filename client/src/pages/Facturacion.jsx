@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../supabaseClient.js';
 import { nombreCarpetaGuardada, guardarEnCarpeta } from '../fsFolder.js';
+import Toggle from '../ui/Toggle.jsx';
+import { useConfirm } from '../ui/Confirm.jsx';
 import Config from './Config.jsx';
 
 const money = (n) => isNaN(Number(n)) ? n : Number(n).toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
 
 export default function Facturacion() {
+  const confirm = useConfirm();
   const [seccion, setSeccion] = useState('emitir'); // 'emitir' | 'config'
   const [produccion, setProduccion] = useState(false);
   const [archivo, setArchivo] = useState(null);
@@ -25,10 +28,13 @@ export default function Facturacion() {
 
   // Confirmación fuerte antes de operar en producción (facturas reales).
   function confirmarProduccion(accion) {
-    if (!produccion) return true;
-    return window.confirm(
-      `⚠️ Estás en modo PRODUCCIÓN.\n\nLas facturas que se emitan son REALES, tienen validez fiscal ante AFIP y NO se pueden borrar (solo anular con nota de crédito).\n\n¿Confirmás ${accion}?`
-    );
+    if (!produccion) return Promise.resolve(true);
+    return confirm({
+      tone: 'danger',
+      title: 'Estás en producción',
+      message: `Las facturas que se emitan son reales, tienen validez fiscal ante AFIP y no se pueden borrar (solo anular con nota de crédito).\n\n¿Confirmás ${accion}?`,
+      confirmText: 'Sí, emitir',
+    });
   }
 
   async function validar(file) {
@@ -53,7 +59,7 @@ export default function Facturacion() {
 
   async function emitir() {
     if (!archivo) return;
-    if (!confirmarProduccion('emitir estas facturas ahora')) return;
+    if (!(await confirmarProduccion('emitir estas facturas ahora'))) return;
     const fd = new FormData();
     fd.append('archivo', archivo);
     fd.append('generarPdf', generarPdf ? 'true' : 'false');
@@ -72,7 +78,7 @@ export default function Facturacion() {
 
   async function programar() {
     if (!archivo) return;
-    if (!confirmarProduccion('programar/emitir estas facturas')) return;
+    if (!(await confirmarProduccion('programar/emitir estas facturas'))) return;
     const fd = new FormData(); fd.append('archivo', archivo);
     setCargando(true); setEstado({ tipo: 'loading', txt: '⏳ Programando…' });
     try {
@@ -234,8 +240,8 @@ export default function Facturacion() {
                   </ul>
                 )}
                 <div className="row">
-                  <label className="tgl"><input type="checkbox" style={{ width: 'auto' }} checked={generarPdf} onChange={(e) => setGenerarPdf(e.target.checked)} /> Generar PDF</label>
-                  <label className="tgl"><input type="checkbox" style={{ width: 'auto' }} checked={subirDrive} onChange={(e) => setSubirDrive(e.target.checked)} /> Subir a Drive</label>
+                  <Toggle checked={generarPdf} onChange={setGenerarPdf} label="Generar PDF" />
+                  <Toggle checked={subirDrive} onChange={setSubirDrive} label="Subir a Drive" />
                   <span className="spacer" />
                   <button className="btn btn-ghost" disabled={bloqueado} onClick={programar}>📅 Programar por fecha</button>
                   <button className="btn btn-primary" disabled={bloqueado} onClick={emitir}>

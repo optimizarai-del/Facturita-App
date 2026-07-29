@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { supabase, apiFetch } from '../supabaseClient.js';
+import { useConfirm } from '../ui/Confirm.jsx';
 
 export default function Clientes({ session }) {
+  const confirm = useConfirm();
   const [clientes, setClientes] = useState(null);
   const [form, setForm] = useState({ nombre: '', documento: '', email: '', condicionIVA: '' });
   const [estado, setEstado] = useState(null);
@@ -53,7 +55,13 @@ export default function Clientes({ session }) {
   }
 
   async function borrar(id, nombre) {
-    if (!window.confirm(`¿Seguro que querés borrar a "${nombre}"? Esta acción no se puede deshacer.`)) return;
+    const ok = await confirm({
+      tone: 'danger',
+      title: 'Borrar cliente',
+      message: `¿Seguro que querés borrar a "${nombre}"? Esta acción no se puede deshacer.`,
+      confirmText: 'Borrar',
+    });
+    if (!ok) return;
     await supabase.from('clientes').delete().eq('id', id);
     cargar();
   }

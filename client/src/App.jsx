@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from './supabaseClient.js';
+import { ConfirmProvider } from './ui/Confirm.jsx';
 import Login from './pages/Login.jsx';
 import Home from './pages/Home.jsx';
 
@@ -31,7 +32,11 @@ export default function App() {
     return <div className="center"><div className="spinner-lg" /></div>;
   }
 
-  return session
-    ? <Home session={session} tema={tema} toggleTema={toggleTema} />
-    : <Login tema={tema} toggleTema={toggleTema} />;
+  return (
+    <ConfirmProvider>
+      {session
+        ? <Home session={session} tema={tema} toggleTema={toggleTema} />
+        : <Login tema={tema} toggleTema={toggleTema} />}
+    </ConfirmProvider>
+  );
 }

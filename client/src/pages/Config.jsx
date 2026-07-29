@@ -1,8 +1,19 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../supabaseClient.js';
 import { soportaCarpeta, nombreCarpetaGuardada, elegirCarpeta } from '../fsFolder.js';
+import Toggle from '../ui/Toggle.jsx';
+import { useConfirm } from '../ui/Confirm.jsx';
+
+const EyeIcon = ({ off }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+    {off
+      ? <><path d="M9.9 4.24A9.1 9.1 0 0 1 12 4c7 0 10 8 10 8a13.2 13.2 0 0 1-1.67 2.68M6.6 6.6C3.6 8.24 2 12 2 12s3 8 10 8a9.3 9.3 0 0 0 5.4-1.6M14.1 14.1a3 3 0 0 1-4.24-4.24" /><path d="m2 2 20 20" /></>
+      : <><path d="M2 12s3-8 10-8 10 8 10 8-3 8-10 8-10-8-10-8Z" /><circle cx="12" cy="12" r="3" /></>}
+  </svg>
+);
 
 export default function Config() {
+  const confirm = useConfirm();
   const [c, setC] = useState(null);
   const [form, setForm] = useState({});
   const [token, setToken] = useState('');
@@ -78,15 +89,17 @@ export default function Config() {
   }
 
   // Activar producción exige confirmación explícita (emite facturas reales).
-  function toggleProduccion(e) {
-    const activar = e.target.checked;
-    if (activar) {
-      const ok = window.confirm(
-        '⚠️ Vas a activar PRODUCCIÓN. Las facturas que emitas van a tener validez fiscal real ante AFIP y NO se pueden anular desde acá.\n\n¿Confirmás?'
-      );
-      if (!ok) return; // no cambia el toggle
+  async function handleProduccion(next) {
+    if (next) {
+      const ok = await confirm({
+        tone: 'danger',
+        title: 'Activar producción',
+        message: 'Las facturas que emitas van a tener validez fiscal real ante AFIP y no se pueden anular desde acá (solo con nota de crédito).',
+        confirmText: 'Activar producción',
+      });
+      if (!ok) return;
     }
-    setForm({ ...form, production: activar });
+    setForm({ ...form, production: next });
   }
 
   async function probar() {
@@ -140,9 +153,9 @@ export default function Config() {
       <h3>Conexión AFIP</h3>
       <label>Access token de AFIP SDK {c.tieneAccessToken && <span className="muted">(guardado)</span>}</label>
       <input value={token} onChange={(e) => setToken(e.target.value)} placeholder={c.tieneAccessToken ? '•••••• (dejá vacío para no cambiar)' : 'Pegá tu access token'} />
-      <label className="tgl" style={{ marginTop: 12 }}>
-        <input type="checkbox" checked={form.production} onChange={toggleProduccion} /> Usar producción (facturas reales)
-      </label>
+      <div style={{ marginTop: 14 }}>
+        <Toggle checked={!!form.production} onChange={handleProduccion} label="Usar producción (facturas reales)" />
+      </div>
 
       <h3>Destino de salida</h3>
       <div className="grid2">
@@ -199,7 +212,7 @@ export default function Config() {
           <input type={verClave ? 'text' : 'password'} value={clave} onChange={(e) => setClave(e.target.value)} autoComplete="off" />
           <button type="button" className="eye-btn" onClick={() => setVerClave(!verClave)}
             title={verClave ? 'Ocultar' : 'Mostrar'} aria-label={verClave ? 'Ocultar clave' : 'Mostrar clave'}>
-            {verClave ? '🙈' : '👁️'}
+            <EyeIcon off={verClave} />
           </button>
         </div>
         <label>Alias</label><input value={alias} onChange={(e) => setAlias(e.target.value)} />

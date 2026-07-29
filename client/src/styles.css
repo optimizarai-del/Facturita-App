@@ -71,8 +71,39 @@ input:focus, select:focus { outline: none; border-color: var(--accent);
 input::placeholder { color: var(--muted); }
 .input-eye { position: relative; }
 .input-eye input { padding-right: 44px; }
-.eye-btn { position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
-  background: transparent; border: none; cursor: pointer; font-size: 1.05rem; padding: 6px 8px; line-height: 1; }
+.eye-btn { position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+  background: transparent; border: none; cursor: pointer; padding: 8px; line-height: 0; color: var(--text2); border-radius: 8px; }
+.eye-btn:hover { color: var(--text); background: var(--elev); }
+.eye-btn svg { width: 18px; height: 18px; display: block; }
+
+/* Toggle switch estilo iOS */
+.switch { width: 44px; height: 26px; border-radius: 20px; background: var(--border2); position: relative;
+  border: none; cursor: pointer; padding: 0; transition: background .22s; flex-shrink: 0; }
+.switch.on { background: var(--accent); }
+.switch .knob { position: absolute; top: 2px; left: 2px; width: 22px; height: 22px; border-radius: 50%;
+  background: #fff; transition: transform .22s; box-shadow: 0 1px 3px rgba(0,0,0,.3); }
+.switch.on .knob { transform: translateX(18px); }
+.switch:focus-visible { outline: none; box-shadow: 0 0 0 3.5px color-mix(in srgb, var(--accent) 30%, transparent); }
+.tgl-row { display: flex; align-items: center; gap: 10px; font-size: 0.9rem; color: var(--text); cursor: pointer; user-select: none; }
+
+/* Modal de confirmación */
+.modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.4); backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px); display: grid; place-items: center; z-index: 100; padding: 20px; animation: fadein .15s ease; }
+.modal { background: var(--panel); border: 0.5px solid var(--border); border-radius: 18px; padding: 26px 24px 22px;
+  max-width: 380px; width: 100%; box-shadow: var(--shadow-pop); text-align: center; animation: pop .18s ease; }
+.modal .modal-ic { width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; margin: 0 auto 14px; }
+.modal .modal-ic svg { width: 24px; height: 24px; }
+.modal .modal-ic.danger { background: var(--err-bg); color: var(--err-ink); }
+.modal .modal-ic.accent { background: var(--accent-soft); color: var(--accent-soft-ink); }
+.modal h3 { margin: 0 0 8px; font-size: 1.1rem; font-weight: 600; }
+.modal p { color: var(--text2); font-size: 0.9rem; margin: 0 0 20px; white-space: pre-line; line-height: 1.55; }
+.modal-actions { display: flex; gap: 10px; }
+.modal-actions .btn { flex: 1; justify-content: center; text-align: center; padding: 11px; }
+.btn-danger { background: var(--err-ink); color: #fff; border-color: transparent; }
+.btn-danger:hover { filter: brightness(1.05); background: var(--err-ink); }
+@keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pop { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .modal, .modal-backdrop { animation: none; } }
 
 /* ===== Login ===== */
 .auth-wrap { min-height: 100vh; display: grid; place-items: center; padding: 20px; position: relative; }
