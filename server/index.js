@@ -23,6 +23,77 @@ import { getAuthUrl, exchangeCode, verifyState, subirCarpetaADrive } from './ser
 // Último resultado por usuario, para re-descargar el Excel.
 const ultimoResultado = new Map();
 
+// Fecha de HOY en Argentina como yyyymmdd (number), para comparar con las fechas del Excel.
+function hoyYyyymmdd() {
+  const s = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
+  return Number(s.replace(/-/g, ''));
+}
+
+// Pipeline completo de emisión: emite en AFIP, guarda Excel de resultados, genera PDFs,
+// sube a Drive (según preferencia) y persiste en Supabase. Devuelve el result enriquecido.
+async function ejecutarEmision(req, settings, rows, { generarPdf = true, subirDrive = false } = {}) {
+  // Enriquecer cada fila con la condición IVA real del cliente (traída del padrón
+  // al darlo de alta) para que AFIP no rechace por condición de receptor incorrecta.
+  const condicionPorDoc = await mapCondicionPorDoc(
+    req.supabase, req.userId, rows.map((r) => r.documento)
+  );
+  for (const r of rows) {
+    const doc = String(r.documento ?? '').replace(/\D/g, '');
+    if (doc && condicionPorDoc[doc]) r.condicionIVAReceptor = condicionPorDoc[doc];
+  }
+
+  const result = await procesarFacturas(rows, settings);
+
+  let carpeta = null;
+  try {
+    const out = await guardarResultados(result, settings);
+    carpeta = out.carpeta;
+    result.carpeta = carpeta;
+  } catch (e) {
+    console.error('No se pudo guardar el Excel de resultados:', e.message);
+    result.carpetaError = e.message;
+  }
+
+  if (generarPdf && carpeta && result.resumen.realizadas > 0) {
+    try {
+      result.pdf = await generarPDFs(result.resultados, settings, carpeta);
+    } catch (e) {
+      console.error('Error generando PDFs:', e.message);
+      result.pdf = { generados: 0, errores: [{ error: e.message }] };
+    }
+  }
+
+  const destino = settings.destinoSalida || 'local';
+  const quiereDrive = destino === 'drive' || destino === 'ambos' || subirDrive;
+  if (quiereDrive && carpeta) {
+    try {
+      result.drive = await subirCarpetaADrive(carpeta, settings);
+    } catch (e) {
+      console.error('Error subiendo a Drive:', e.message);
+      result.drive = { error: e.message };
+    }
+  }
+
+  try {
+    result.persistencia = await guardarFacturas(
+      req.supabase, req.userId, result.resultados, result.resumen.ambiente
+    );
+  } catch (e) {
+    console.error('Error persistiendo facturas:', e.message);
+    result.persistencia = { guardadas: 0, errores: [{ error: e.message }] };
+  }
+
+  if (result.resumen.realizadas > 0 && settings.notifEmail) {
+    try {
+      const emitidas = result.resultados.filter((r) => r.estado === 'ok')
+        .map((r) => ({ tipo: r.tipo, nombre: r.nombre, importe: r.importeNum, cae: r.cae }));
+      await enviarResumenEmisiones(settings.notifEmail, emitidas, result.resumen.ambiente);
+    } catch (e) { console.error('Mail resumen falló:', e.message); }
+  }
+
+  return result;
+}
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
@@ -260,14 +331,46 @@ app.post('/api/validar', requireAuth, upload.single('archivo'), async (req, res)
   }
 });
 
-// Fase 7: programar facturas (se emiten solas en su fecha de emisión).
-app.post('/api/programar', requireAuth, upload.single('archivo'), async (req, res) => {
+// Programar por fecha: emite YA las filas cuya fecha de emisión es hoy o anterior
+// (o sin fecha), y deja programadas las de fecha futura (salen su día a las 09:00).
+app.post('/api/programar', sensitiveLimiter, requireAuth, upload.single('archivo'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No se recibió ningún archivo Excel.' });
     const rows = await readFacturasFromBuffer(req.file.buffer);
     if (!rows.length) return res.status(400).json({ error: 'El Excel no tiene filas para procesar.' });
-    const out = await guardarProgramadas(req.supabase, req.userId, rows);
-    res.json({ ok: true, ...out });
+
+    const hoy = hoyYyyymmdd();
+    // Vencidas: sin fecha o con fecha <= hoy => se emiten ahora.
+    // Futuras: fecha > hoy => quedan programadas.
+    const vencidas = rows.filter((r) => !r.fechaEmision || Number(r.fechaEmision) <= hoy);
+    const futuras = rows.filter((r) => r.fechaEmision && Number(r.fechaEmision) > hoy);
+
+    const settings = await getSettings(req.supabase, req.userId);
+
+    let emision = null;
+    if (vencidas.length) {
+      emision = await ejecutarEmision(req, settings, vencidas, { generarPdf: true });
+      ultimoResultado.set(req.userId, emision);
+    }
+
+    let programadas = { guardadas: 0 };
+    if (futuras.length) {
+      programadas = await guardarProgramadas(req.supabase, req.userId, futuras);
+    }
+
+    // Fechas (yyyymmdd -> dd/mm) de las que quedaron en cola, para mostrarlas.
+    const fechasFuturas = [...new Set(futuras.map((r) => Number(r.fechaEmision)))]
+      .sort((a, b) => a - b)
+      .map((n) => { const s = String(n); return `${s.slice(6, 8)}/${s.slice(4, 6)}`; });
+
+    res.json({
+      ok: true,
+      emitidasAhora: emision ? emision.resumen.realizadas : 0,
+      conErrorAhora: emision ? emision.resumen.pendientes : 0,
+      programadas: programadas.guardadas,
+      fechasFuturas,
+      resultado: emision, // para mostrar la tabla de lo emitido ahora
+    });
   } catch (err) {
     console.error('Error programando:', err);
     res.status(500).json({ error: err.message || 'No se pudieron programar las facturas' });
@@ -282,72 +385,11 @@ app.post('/api/facturar', sensitiveLimiter, requireAuth, upload.single('archivo'
     if (!rows.length) return res.status(400).json({ error: 'El Excel no tiene filas de facturas para procesar.' });
 
     const settings = await getSettings(req.supabase, req.userId);
+    const generarPdf = String(req.body?.generarPdf ?? 'true') !== 'false';
+    const subirDrive = String(req.body?.subirDrive ?? 'false') === 'true';
 
-    // Enriquecer cada fila con la condición IVA real del cliente (traída del padrón
-    // al darlo de alta) para que AFIP no rechace por condición de receptor incorrecta.
-    const condicionPorDoc = await mapCondicionPorDoc(
-      req.supabase, req.userId, rows.map((r) => r.documento)
-    );
-    for (const r of rows) {
-      const doc = String(r.documento ?? '').replace(/\D/g, '');
-      if (doc && condicionPorDoc[doc]) r.condicionIVAReceptor = condicionPorDoc[doc];
-    }
-
-    const result = await procesarFacturas(rows, settings);
+    const result = await ejecutarEmision(req, settings, rows, { generarPdf, subirDrive });
     ultimoResultado.set(req.userId, result);
-
-    let carpeta = null;
-    try {
-      const out = await guardarResultados(result, settings);
-      carpeta = out.carpeta;
-      result.carpeta = carpeta;
-    } catch (e) {
-      console.error('No se pudo guardar el Excel de resultados:', e.message);
-      result.carpetaError = e.message;
-    }
-
-    const quierePdf = String(req.body?.generarPdf ?? 'true') !== 'false';
-    if (quierePdf && carpeta && result.resumen.realizadas > 0) {
-      try {
-        result.pdf = await generarPDFs(result.resultados, settings, carpeta);
-      } catch (e) {
-        console.error('Error generando PDFs:', e.message);
-        result.pdf = { generados: 0, errores: [{ error: e.message }] };
-      }
-    }
-
-    // Respeta la preferencia de destino del usuario (o el checkbox como override).
-    const destino = settings.destinoSalida || 'local';
-    const quiereDrive = destino === 'drive' || destino === 'ambos'
-      || String(req.body?.subirDrive ?? 'false') === 'true';
-    if (quiereDrive && carpeta) {
-      try {
-        result.drive = await subirCarpetaADrive(carpeta, settings);
-      } catch (e) {
-        console.error('Error subiendo a Drive:', e.message);
-        result.drive = { error: e.message };
-      }
-    }
-
-    // Fase 4: persistir las facturas en Supabase (historial + clientes).
-    try {
-      result.persistencia = await guardarFacturas(
-        req.supabase, req.userId, result.resultados, result.resumen.ambiente
-      );
-    } catch (e) {
-      console.error('Error persistiendo facturas:', e.message);
-      result.persistencia = { guardadas: 0, errores: [{ error: e.message }] };
-    }
-
-    // Fase 8: notificar por mail el resumen de emitidas (si hay SMTP y email).
-    if (result.resumen.realizadas > 0 && settings.notifEmail) {
-      try {
-        const emitidas = result.resultados.filter((r) => r.estado === 'ok')
-          .map((r) => ({ tipo: r.tipo, nombre: r.nombre, importe: r.importeNum, cae: r.cae }));
-        await enviarResumenEmisiones(settings.notifEmail, emitidas, result.resumen.ambiente);
-      } catch (e) { console.error('Mail resumen falló:', e.message); }
-    }
-
     res.json(result);
   } catch (err) {
     console.error('Error al facturar:', err);

@@ -63,10 +63,16 @@ export default function Facturacion() {
       const r = await apiFetch('/api/programar', { method: 'POST', body: fd });
       const d = await r.json();
       if (!r.ok) { setEstado({ tipo: 'err', txt: d.error }); return; }
-      const extra = d.sinFecha > 0
-        ? ` ${d.sinFecha} sin fecha se emitirán en la próxima corrida (mañana 09:00).`
-        : '';
-      setEstado({ tipo: 'ok', txt: `📅 ${d.guardadas} factura(s) programada(s). Cada una se emite sola en su fecha de emisión.${extra}` });
+      const partes = [];
+      if (d.emitidasAhora) partes.push(`⚡ ${d.emitidasAhora} emitida(s) ahora`);
+      if (d.conErrorAhora) partes.push(`${d.conErrorAhora} con error`);
+      if (d.programadas) {
+        const fechas = d.fechasFuturas?.length ? ` (${d.fechasFuturas.join(', ')})` : '';
+        partes.push(`📅 ${d.programadas} programada(s)${fechas}`);
+      }
+      setEstado({ tipo: d.conErrorAhora ? 'err' : 'ok', txt: partes.join(' · ') || 'Nada para procesar.' });
+      // Si se emitió algo ahora, mostramos la tabla; si no, limpiamos.
+      if (d.resultado && d.emitidasAhora) setResultado(d.resultado);
       setPreview(null); setArchivo(null);
     } catch { setEstado({ tipo: 'err', txt: 'Error al programar.' }); }
     finally { setCargando(false); }
