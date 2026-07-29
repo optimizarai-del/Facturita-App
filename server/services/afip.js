@@ -126,7 +126,26 @@ export async function generarCertificado(settings, { password, username, alias }
   const certAlias = String(alias || 'facturitaapp').trim();
   const afip = getAfipClient(settings);
 
-  const cert = await afip.CreateCert(user, password, certAlias);
+  let cert;
+  try {
+    cert = await afip.CreateCert(user, password, certAlias);
+  } catch (e) {
+    // El interceptor de afipsdk pone el cuerpo real en e.data (no en e.response.data).
+    const body = e?.data ?? e?.response?.data;
+    try {
+      console.error('[cert] status:', e?.status ?? e?.response?.status);
+      console.error('[cert] data:', typeof body === 'string' ? body : JSON.stringify(body));
+      console.error('[cert] message:', e?.message);
+    } catch { /* noop */ }
+    const detalle = body?.message || body?.error || body?.detail || body?.msg
+      || (typeof body === 'string' ? body : '') || e.message || '';
+    const amb = settings.production === true ? 'producción' : 'homologación';
+    throw new Error(
+      `AFIP rechazó la generación del certificado en ${amb}. ` +
+      'Revisá que el CUIT y la clave fiscal sean correctos y que el access token de AFIP SDK ' +
+      `sea válido para ${amb}.` + (detalle ? ` Detalle de AFIP: ${detalle}` : '')
+    );
+  }
   if (!cert?.cert || !cert?.key) {
     throw new Error('AFIP SDK no devolvió el certificado esperado.');
   }

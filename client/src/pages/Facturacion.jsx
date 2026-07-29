@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { apiFetch } from '../supabaseClient.js';
 import Config from './Config.jsx';
 
@@ -6,6 +6,7 @@ const money = (n) => isNaN(Number(n)) ? n : Number(n).toLocaleString('es-AR', { 
 
 export default function Facturacion() {
   const [seccion, setSeccion] = useState('emitir'); // 'emitir' | 'config'
+  const [produccion, setProduccion] = useState(false);
   const [archivo, setArchivo] = useState(null);
   const [preview, setPreview] = useState(null);
   const [resultado, setResultado] = useState(null);
@@ -16,6 +17,18 @@ export default function Facturacion() {
 
   // Paso actual del wizard: 1 subir · 2 revisar · 3 emitir.
   const paso = resultado ? 3 : preview ? 2 : 1;
+
+  useEffect(() => {
+    apiFetch('/api/config').then((r) => r.json()).then((d) => setProduccion(Boolean(d.production))).catch(() => {});
+  }, [seccion]);
+
+  // Confirmación fuerte antes de operar en producción (facturas reales).
+  function confirmarProduccion(accion) {
+    if (!produccion) return true;
+    return window.confirm(
+      `⚠️ Estás en modo PRODUCCIÓN.\n\nLas facturas que se emitan son REALES, tienen validez fiscal ante AFIP y NO se pueden borrar (solo anular con nota de crédito).\n\n¿Confirmás ${accion}?`
+    );
+  }
 
   async function validar(file) {
     setPreview(null); setResultado(null); setEstado(null);
@@ -39,6 +52,7 @@ export default function Facturacion() {
 
   async function emitir() {
     if (!archivo) return;
+    if (!confirmarProduccion('emitir estas facturas ahora')) return;
     const fd = new FormData();
     fd.append('archivo', archivo);
     fd.append('generarPdf', generarPdf ? 'true' : 'false');
@@ -57,6 +71,7 @@ export default function Facturacion() {
 
   async function programar() {
     if (!archivo) return;
+    if (!confirmarProduccion('programar/emitir estas facturas')) return;
     const fd = new FormData(); fd.append('archivo', archivo);
     setCargando(true); setEstado({ tipo: 'loading', txt: '⏳ Programando…' });
     try {
@@ -99,6 +114,11 @@ export default function Facturacion() {
 
       {seccion === 'emitir' && (
         <>
+          {produccion && (
+            <div className="prod-banner">
+              <span className="dot" /> Modo <b>PRODUCCIÓN</b> — las facturas que emitas son <b>reales</b> (validez fiscal, no se borran).
+            </div>
+          )}
           <div className="steps">
             <div className={`step ${paso > 1 ? 'done' : 'cur'}`}>
               <span className="n">{paso > 1 ? '✓' : '1'}</span><span className="lbl">Subir Excel</span>

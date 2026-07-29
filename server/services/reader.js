@@ -59,8 +59,10 @@ export async function readFacturasFromBuffer(buffer) {
 export function parseFecha(raw) {
   if (raw === null || raw === undefined || String(raw).trim() === '') return null;
   if (raw instanceof Date) {
+    // ExcelJS guarda las fechas como medianoche UTC. Usamos getUTC* para no
+    // correr un día hacia atrás en zonas horarias negativas (Argentina UTC-3).
     return Number(
-      `${raw.getFullYear()}${String(raw.getMonth() + 1).padStart(2, '0')}${String(raw.getDate()).padStart(2, '0')}`
+      `${raw.getUTCFullYear()}${String(raw.getUTCMonth() + 1).padStart(2, '0')}${String(raw.getUTCDate()).padStart(2, '0')}`
     );
   }
   const s = String(raw).trim();

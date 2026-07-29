@@ -9,6 +9,7 @@ export default function Config() {
   const [alias, setAlias] = useState('facturitaapp');
   const [estado, setEstado] = useState(null);
   const [cert, setCert] = useState(null); // {generando, ok}
+  const [verClave, setVerClave] = useState(false);
 
   useEffect(() => { cargar(); }, []);
 
@@ -132,7 +133,13 @@ export default function Config() {
         </div>
         <p className="aviso">⚠️ Tu clave fiscal se envía a afipsdk.com solo para generar el certificado y no se guarda.</p>
         <label>Clave fiscal de AFIP</label>
-        <input type="password" value={clave} onChange={(e) => setClave(e.target.value)} autoComplete="off" />
+        <div className="input-eye">
+          <input type={verClave ? 'text' : 'password'} value={clave} onChange={(e) => setClave(e.target.value)} autoComplete="off" />
+          <button type="button" className="eye-btn" onClick={() => setVerClave(!verClave)}
+            title={verClave ? 'Ocultar' : 'Mostrar'} aria-label={verClave ? 'Ocultar clave' : 'Mostrar clave'}>
+            {verClave ? '🙈' : '👁️'}
+          </button>
+        </div>
         <label>Alias</label><input value={alias} onChange={(e) => setAlias(e.target.value)} />
         <div className="row">
           <button className="btn btn-ghost" onClick={generarCert} disabled={cert?.generando}>
