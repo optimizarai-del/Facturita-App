@@ -22,7 +22,6 @@ export default function Config() {
   const [estado, setEstado] = useState(null);
   const [cert, setCert] = useState(null); // {generando, ok}
   const [verClave, setVerClave] = useState(false);
-  const [driveSecret, setDriveSecret] = useState('');
   const [driveMsg, setDriveMsg] = useState(null);
   const [carpetaLocal, setCarpetaLocal] = useState(null); // nombre de la carpeta elegida
 
@@ -57,14 +56,13 @@ export default function Config() {
   async function guardar() {
     const body = { ...form };
     if (token.trim()) body.accessToken = token.trim();
-    if (driveSecret.trim()) body.driveClientSecret = driveSecret.trim();
     const r = await apiFetch('/api/config', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
     });
     let d = {};
     try { d = await r.json(); } catch { /* sin body */ }
     setEstado(r.ok ? { tipo: 'ok', txt: '✅ Guardado.' } : { tipo: 'err', txt: d.error || 'No se pudo guardar.' });
-    if (r.ok) { setToken(''); setDriveSecret(''); cargar(); }
+    if (r.ok) { setToken(''); cargar(); }
     return r.ok;
   }
 
@@ -181,17 +179,18 @@ export default function Config() {
           <b>Google Drive</b>
           <span className={`pill ${c.driveConectado ? 'ok' : 'err'}`}>{c.driveConectado ? 'conectado ✅' : 'no conectado'}</span>
         </div>
-        <p className="muted sm" style={{ margin: '4px 0 10px' }}>Podés reusar el mismo cliente OAuth de Google del login (redirect: <code>http://localhost:3000/api/drive/callback</code>).</p>
-        <div className="grid2">
-          <div><label>Client ID de Google</label><input value={form.driveClientId || ''} onChange={set('driveClientId')} placeholder="xxxxx.apps.googleusercontent.com" /></div>
-          <div><label>Client Secret {c.tieneDriveSecret && <span className="muted">(guardado)</span>}</label>
-            <input type="password" value={driveSecret} onChange={(e) => setDriveSecret(e.target.value)} placeholder={c.tieneDriveSecret ? '•••••• (dejá vacío para no cambiar)' : 'Pegá el Client Secret'} /></div>
-        </div>
-        <label>Carpeta destino en Drive (opcional)</label>
-        <input value={form.driveFolderId || ''} onChange={set('driveFolderId')} placeholder="ID de la carpeta (vacío = raíz de tu Drive)" />
-        <div className="row">
-          <button className="btn btn-blue" onClick={conectarDrive}>☁️ {c.driveConectado ? 'Reconectar' : 'Conectar'} Google Drive</button>
-        </div>
+        {c.driveDisponible ? (
+          <>
+            <p className="muted sm" style={{ margin: '4px 0 12px' }}>Conectá tu Google Drive con un click para guardar ahí los comprobantes.</p>
+            <label>Carpeta destino en Drive (opcional)</label>
+            <input value={form.driveFolderId || ''} onChange={set('driveFolderId')} placeholder="ID de la carpeta (vacío = raíz de tu Drive)" />
+            <div className="row">
+              <button className="btn btn-blue" onClick={conectarDrive}>☁️ {c.driveConectado ? 'Reconectar' : 'Conectar'} Google Drive</button>
+            </div>
+          </>
+        ) : (
+          <p className="aviso" style={{ marginTop: 10 }}>Google Drive todavía no está configurado en el servidor (falta cargar las credenciales de la app).</p>
+        )}
         {driveMsg && <div className={`status ${driveMsg.tipo}`}>{driveMsg.txt}</div>}
       </div>
 

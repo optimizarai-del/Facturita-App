@@ -45,16 +45,25 @@ const MIME = {
   '.pdf': 'application/pdf',
 };
 
-// Crea el cliente OAuth a partir de la config (sin refresh token todavía).
-function oauthClient(settings) {
-  if (!settings.driveClientId || !settings.driveClientSecret) {
-    throw new Error('Faltan las credenciales de Google (Client ID y Client Secret).');
+// Credenciales de la app de Google (una sola, del dueño de FacturitaApp).
+// El usuario final NO necesita crear ni pegar nada: solo autoriza el acceso.
+// Se reusa la misma app de Google del login. Fallback a las por-usuario (legacy).
+const APP_GOOGLE_ID = process.env.GOOGLE_CLIENT_ID || '';
+const APP_GOOGLE_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
+
+// Crea el cliente OAuth con las credenciales de la app (o las legacy del usuario).
+function oauthClient(settings = {}) {
+  const clientId = APP_GOOGLE_ID || settings.driveClientId;
+  const clientSecret = APP_GOOGLE_SECRET || settings.driveClientSecret;
+  if (!clientId || !clientSecret) {
+    throw new Error('Google Drive no está configurado en el servidor (falta GOOGLE_CLIENT_ID/SECRET).');
   }
-  return new google.auth.OAuth2(
-    settings.driveClientId,
-    settings.driveClientSecret,
-    REDIRECT_URI
-  );
+  return new google.auth.OAuth2(clientId, clientSecret, REDIRECT_URI);
+}
+
+// ¿La app tiene configuradas las credenciales de Google a nivel servidor?
+export function driveDisponible() {
+  return Boolean(APP_GOOGLE_ID && APP_GOOGLE_SECRET);
 }
 
 // Devuelve la URL de autorización. Codifica el userId en el `state` para
@@ -73,22 +82,15 @@ export function getAuthUrl(settings, userId) {
 // Usa el service client porque el callback de Google no trae el JWT del usuario.
 export async function exchangeCode(code, userId) {
   const svc = supabaseService();
-  const { data: cred } = await svc
-    .from('drive_credentials').select('*').eq('user_id', userId).single();
-  if (!cred) throw new Error('Usuario no encontrado.');
-
-  const client = oauthClient({
-    driveClientId: cred.client_id,
-    driveClientSecret: decrypt(cred.client_secret), // guardado cifrado
-  });
+  const client = oauthClient(); // credenciales de la app (env)
   const { tokens } = await client.getToken(code);
   if (!tokens.refresh_token) {
     throw new Error('Google no devolvió un refresh token. Revocá el acceso y volvé a autorizar.');
   }
   const { error } = await svc
     .from('drive_credentials')
-    .update({ refresh_token: encrypt(tokens.refresh_token), updated_at: new Date().toISOString() })
-    .eq('user_id', userId);
+    .upsert({ user_id: userId, refresh_token: encrypt(tokens.refresh_token), updated_at: new Date().toISOString() },
+      { onConflict: 'user_id' });
   if (error) throw new Error(error.message);
   return { ok: true };
 }

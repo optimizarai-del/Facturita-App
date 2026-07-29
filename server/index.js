@@ -22,7 +22,7 @@ import { enviarResumenEmisiones } from './services/mailer.js';
 import { startScheduler } from './services/scheduler.js';
 import { guardarResultados, buildResultadosWorkbook } from './services/exporter.js';
 import { generarPDFs } from './services/pdf.js';
-import { getAuthUrl, exchangeCode, verifyState, subirCarpetaADrive } from './services/drive.js';
+import { getAuthUrl, exchangeCode, verifyState, subirCarpetaADrive, driveDisponible } from './services/drive.js';
 
 // Último resultado por usuario, para re-descargar el Excel.
 const ultimoResultado = new Map();
@@ -175,8 +175,7 @@ app.get('/api/config', requireAuth, async (req, res) => {
       ingresosBrutos: s.ingresosBrutos,
       inicioActividades: s.inicioActividades,
       notifEmail: s.notifEmail,
-      driveClientId: s.driveClientId,
-      tieneDriveSecret: Boolean(s.driveClientSecret),
+      driveDisponible: driveDisponible(),
       driveConectado: Boolean(s.driveRefreshToken),
       driveFolderId: s.driveFolderId,
       tieneAccessToken: Boolean(s.accessToken),
