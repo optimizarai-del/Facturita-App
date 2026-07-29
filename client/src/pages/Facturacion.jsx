@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../supabaseClient.js';
+import { nombreCarpetaGuardada, guardarEnCarpeta } from '../fsFolder.js';
 import Config from './Config.jsx';
 
 const money = (n) => isNaN(Number(n)) ? n : Number(n).toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
@@ -93,12 +94,81 @@ export default function Facturacion() {
     finally { setCargando(false); }
   }
 
+  const [guardando, setGuardando] = useState(false);
+  const [guardadoMsg, setGuardadoMsg] = useState(null);
+
   async function descargar(path, nombre) {
     const r = await apiFetch(path);
     const blob = await r.blob();
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = url; a.download = nombre; a.click();
     URL.revokeObjectURL(url);
+  }
+
+  // Guarda en local: si el usuario configuró una carpeta, escribe los archivos
+  // ahí directamente; si no, descarga un ZIP con el "Guardar como" del navegador.
+  async function guardarLocal() {
+    setGuardadoMsg(null); setGuardando(true);
+    try {
+      const carpeta = await nombreCarpetaGuardada();
+      if (carpeta) {
+        const r = await apiFetch('/api/comprobantes.json');
+        const d = await r.json();
+        if (!r.ok) { setGuardadoMsg({ tipo: 'err', txt: 'No hay comprobantes para guardar.' }); return; }
+        try {
+          const out = await guardarEnCarpeta(d.archivos);
+          setGuardadoMsg({ tipo: 'ok', txt: `✅ ${out.guardados} archivo(s) guardado(s) en "${out.carpeta}".` });
+          return;
+        } catch (e) {
+          if (e.message === 'sin_permiso') { setGuardadoMsg({ tipo: 'err', txt: 'Permiso denegado sobre la carpeta. Volvé a elegirla en Configuración.' }); return; }
+          // sin_carpeta u otro: cae al ZIP
+        }
+      }
+      await descargarZip();
+    } catch { setGuardadoMsg({ tipo: 'err', txt: 'Error al guardar en local.' }); }
+    finally { setGuardando(false); }
+  }
+
+  // Descarga el ZIP de comprobantes. Usa el "Guardar como" nativo si el navegador
+  // lo soporta (Chrome/Edge); si no, cae en la descarga normal.
+  async function descargarZip() {
+    setGuardadoMsg(null);
+    try {
+      const r = await apiFetch('/api/comprobantes.zip');
+      if (!r.ok) { setGuardadoMsg({ tipo: 'err', txt: 'No hay comprobantes para descargar.' }); return; }
+      const blob = await r.blob();
+      if (window.showSaveFilePicker) {
+        try {
+          const handle = await window.showSaveFilePicker({
+            suggestedName: 'comprobantes.zip',
+            types: [{ description: 'Archivo ZIP', accept: { 'application/zip': ['.zip'] } }],
+          });
+          const w = await handle.createWritable(); await w.write(blob); await w.close();
+          setGuardadoMsg({ tipo: 'ok', txt: '✅ Comprobantes guardados en tu carpeta.' });
+          return;
+        } catch (e) { if (e.name === 'AbortError') return; /* si falla, sigue con descarga normal */ }
+      }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = 'comprobantes.zip'; a.click();
+      URL.revokeObjectURL(url);
+      setGuardadoMsg({ tipo: 'ok', txt: '✅ Descarga iniciada.' });
+    } catch { setGuardadoMsg({ tipo: 'err', txt: 'Error al descargar.' }); }
+    finally { setGuardando(false); }
+  }
+
+  async function guardarEnDrive() {
+    setGuardadoMsg(null); setGuardando(true);
+    try {
+      const r = await apiFetch('/api/drive/subir-ultimo', { method: 'POST' });
+      const d = await r.json();
+      if (r.status === 409 && d.error === 'no_conectado') {
+        setGuardadoMsg({ tipo: 'err', txt: '☁️ Google Drive no está conectado. Andá a Configuración → Google Drive para conectarlo.' });
+        return;
+      }
+      if (!r.ok) { setGuardadoMsg({ tipo: 'err', txt: d.error || 'No se pudo subir a Drive.' }); return; }
+      setGuardadoMsg({ tipo: 'ok', txt: `✅ ${d.subidos} archivo(s) subido(s) a Drive.`, link: d.link });
+    } catch { setGuardadoMsg({ tipo: 'err', txt: 'Error al subir a Drive.' }); }
+    finally { setGuardando(false); }
   }
 
   const bloqueado = cargando || (preview && preview.conError === preview.cantidad);
@@ -185,9 +255,24 @@ export default function Facturacion() {
                   <div className="chip ok"><b>{resultado.resumen.realizadas}</b><span>Realizadas</span></div>
                   <div className="chip err"><b>{resultado.resumen.pendientes}</b><span>Con error</span></div>
                 </div>
-                <div className="row" style={{ marginTop: 0 }}>
-                  <button className="btn btn-ghost sm" onClick={() => descargar('/api/resultados.xlsx', 'resultados-facturas.xlsx')}>⬇️ Excel de resultados</button>
-                  <button className="btn btn-ghost sm" onClick={() => { setResultado(null); setPreview(null); setArchivo(null); setEstado(null); }}>Emitir otro lote</button>
+                {resultado.resumen.realizadas > 0 && (
+                  <div className="save-box">
+                    <b>¿Dónde querés guardar los comprobantes?</b>
+                    <div className="row" style={{ marginTop: 12 }}>
+                      <button className="btn btn-primary" disabled={guardando} onClick={guardarLocal}>⬇️ Guardar en local</button>
+                      <button className="btn btn-blue" disabled={guardando} onClick={guardarEnDrive}>☁️ Guardar en Google Drive</button>
+                    </div>
+                    {guardadoMsg && (
+                      <div className={`status ${guardadoMsg.tipo}`}>
+                        {guardadoMsg.txt}
+                        {guardadoMsg.link && <> · <a href={guardadoMsg.link} target="_blank" rel="noreferrer">abrir en Drive ↗</a></>}
+                      </div>
+                    )}
+                  </div>
+                )}
+                <div className="row" style={{ marginTop: 14 }}>
+                  <button className="btn btn-ghost sm" onClick={() => descargar('/api/resultados.xlsx', 'resultados-facturas.xlsx')}>⬇️ Solo el Excel</button>
+                  <button className="btn btn-ghost sm" onClick={() => { setResultado(null); setPreview(null); setArchivo(null); setEstado(null); setGuardadoMsg(null); }}>Emitir otro lote</button>
                 </div>
                 <div className="tabla-wrap">
                   <table>

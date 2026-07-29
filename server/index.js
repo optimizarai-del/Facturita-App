@@ -3,7 +3,11 @@ import express from 'express';
 import multer from 'multer';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
+import fs from 'node:fs';
 import path from 'node:path';
+import { createRequire } from 'node:module';
+const require = createRequire(import.meta.url);
+const archiver = require('archiver');
 import { fileURLToPath } from 'node:url';
 import { requireAuth } from './middleware/auth.js';
 import { log } from './services/log.js';
@@ -410,6 +414,66 @@ app.get('/api/resultados.xlsx', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('Error al descargar resultados:', err);
     res.status(500).json({ error: 'No se pudo generar el Excel de resultados' });
+  }
+});
+
+// Descargar TODOS los comprobantes del último lote (PDFs + Excel) como ZIP.
+// El navegador abre el "Guardar como" para elegir la carpeta local.
+app.get('/api/comprobantes.zip', requireAuth, async (req, res) => {
+  try {
+    const result = ultimoResultado.get(req.userId);
+    if (!result || !result.carpeta || !fs.existsSync(result.carpeta)) {
+      return res.status(404).json({ error: 'No hay comprobantes del último lote para descargar.' });
+    }
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', 'attachment; filename="comprobantes.zip"');
+    const zip = archiver('zip', { zlib: { level: 9 } });
+    zip.on('error', (e) => { console.error('Error armando ZIP:', e.message); try { res.status(500).end(); } catch { /* noop */ } });
+    zip.pipe(res);
+    zip.directory(result.carpeta, false); // agrega todos los archivos de la carpeta
+    await zip.finalize();
+  } catch (err) {
+    console.error('Error generando ZIP:', err);
+    res.status(500).json({ error: 'No se pudo generar el ZIP de comprobantes' });
+  }
+});
+
+// Devuelve los archivos del último lote como base64, para que el navegador los
+// escriba en la carpeta local que el usuario eligió (File System Access API).
+app.get('/api/comprobantes.json', requireAuth, async (req, res) => {
+  try {
+    const result = ultimoResultado.get(req.userId);
+    if (!result || !result.carpeta || !fs.existsSync(result.carpeta)) {
+      return res.status(404).json({ error: 'No hay comprobantes del último lote.' });
+    }
+    const nombres = fs.readdirSync(result.carpeta).filter((n) => fs.statSync(path.join(result.carpeta, n)).isFile());
+    const archivos = nombres.map((name) => ({
+      name,
+      b64: fs.readFileSync(path.join(result.carpeta, name)).toString('base64'),
+    }));
+    res.json({ ok: true, archivos });
+  } catch (err) {
+    console.error('Error leyendo comprobantes:', err);
+    res.status(500).json({ error: 'No se pudieron leer los comprobantes' });
+  }
+});
+
+// Subir a Google Drive los comprobantes del último lote (a pedido del usuario).
+app.post('/api/drive/subir-ultimo', requireAuth, async (req, res) => {
+  try {
+    const result = ultimoResultado.get(req.userId);
+    if (!result || !result.carpeta || !fs.existsSync(result.carpeta)) {
+      return res.status(404).json({ error: 'No hay comprobantes del último lote para subir.' });
+    }
+    const settings = await getSettings(req.supabase, req.userId);
+    if (!settings.driveRefreshToken) {
+      return res.status(409).json({ error: 'no_conectado', mensaje: 'Google Drive no está conectado. Conectá tu cuenta primero.' });
+    }
+    const out = await subirCarpetaADrive(result.carpeta, settings);
+    res.json({ ok: true, ...out });
+  } catch (err) {
+    console.error('Error subiendo a Drive:', err.message);
+    res.status(502).json({ error: err.message || 'No se pudo subir a Google Drive' });
   }
 });
 

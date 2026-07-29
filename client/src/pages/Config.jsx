@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../supabaseClient.js';
+import { soportaCarpeta, nombreCarpetaGuardada, elegirCarpeta } from '../fsFolder.js';
 
 export default function Config() {
   const [c, setC] = useState(null);
@@ -10,8 +11,19 @@ export default function Config() {
   const [estado, setEstado] = useState(null);
   const [cert, setCert] = useState(null); // {generando, ok}
   const [verClave, setVerClave] = useState(false);
+  const [driveSecret, setDriveSecret] = useState('');
+  const [driveMsg, setDriveMsg] = useState(null);
+  const [carpetaLocal, setCarpetaLocal] = useState(null); // nombre de la carpeta elegida
 
-  useEffect(() => { cargar(); }, []);
+  useEffect(() => { cargar(); nombreCarpetaGuardada().then(setCarpetaLocal); }, []);
+
+  async function seleccionarCarpeta() {
+    try {
+      const nombre = await elegirCarpeta();
+      setCarpetaLocal(nombre);
+      setEstado({ tipo: 'ok', txt: `📁 Carpeta local: ${nombre}` });
+    } catch (e) { if (e.name !== 'AbortError') setEstado({ tipo: 'err', txt: 'No se pudo elegir la carpeta.' }); }
+  }
 
   async function cargar() {
     const r = await apiFetch('/api/config');
@@ -24,6 +36,7 @@ export default function Config() {
       ingresosBrutos: d.ingresosBrutos || '', inicioActividades: d.inicioActividades || '',
       destinoSalida: d.destinoSalida || 'local', carpetaSalida: d.carpetaSalida || '',
       production: d.production || false,
+      driveClientId: d.driveClientId || '', driveFolderId: d.driveFolderId || '',
     });
     setAlias(d.certAlias || 'facturitaapp');
   }
@@ -33,14 +46,35 @@ export default function Config() {
   async function guardar() {
     const body = { ...form };
     if (token.trim()) body.accessToken = token.trim();
+    if (driveSecret.trim()) body.driveClientSecret = driveSecret.trim();
     const r = await apiFetch('/api/config', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
     });
     let d = {};
     try { d = await r.json(); } catch { /* sin body */ }
     setEstado(r.ok ? { tipo: 'ok', txt: '✅ Guardado.' } : { tipo: 'err', txt: d.error || 'No se pudo guardar.' });
-    if (r.ok) { setToken(''); cargar(); }
+    if (r.ok) { setToken(''); setDriveSecret(''); cargar(); }
     return r.ok;
+  }
+
+  // Guarda las credenciales de Drive y abre el popup de autorización de Google.
+  async function conectarDrive() {
+    setDriveMsg(null);
+    if (!(await guardar())) return;
+    const r = await apiFetch('/api/drive/auth-url');
+    const d = await r.json();
+    if (!r.ok || !d.url) { setDriveMsg({ tipo: 'err', txt: d.error || 'Faltan el Client ID y Secret de Google.' }); return; }
+    const popup = window.open(d.url, 'drive-oauth', 'width=520,height=640');
+    function onMsg(ev) {
+      if (ev.data === 'drive-true') {
+        setDriveMsg({ tipo: 'ok', txt: '✅ Google Drive conectado.' });
+        cargar(); window.removeEventListener('message', onMsg); try { popup && popup.close(); } catch { /* noop */ }
+      } else if (ev.data === 'drive-false') {
+        setDriveMsg({ tipo: 'err', txt: 'No se pudo conectar. Revisá las credenciales y volvé a intentar.' });
+        window.removeEventListener('message', onMsg);
+      }
+    }
+    window.addEventListener('message', onMsg);
   }
 
   // Activar producción exige confirmación explícita (emite facturas reales).
@@ -117,7 +151,35 @@ export default function Config() {
             <option value="local">Carpeta local</option><option value="drive">Google Drive</option><option value="ambos">Ambos</option>
           </select>
         </div>
-        <div><label>Carpeta local</label><input value={form.carpetaSalida} onChange={set('carpetaSalida')} placeholder="vacío = carpeta 'salida'" /></div>
+        <div><label>Carpeta local</label>
+          {soportaCarpeta() ? (
+            <div className="row" style={{ marginTop: 0 }}>
+              <button className="btn btn-ghost" type="button" onClick={seleccionarCarpeta}>📁 Elegir carpeta…</button>
+              <span className="muted sm">{carpetaLocal ? `Guardando en: ${carpetaLocal}` : 'Ninguna elegida (se descarga como ZIP)'}</span>
+            </div>
+          ) : (
+            <input value={form.carpetaSalida} onChange={set('carpetaSalida')} placeholder="vacío = carpeta 'salida'" />
+          )}
+        </div>
+      </div>
+
+      <div className="box-inner">
+        <div className="box-head">
+          <b>Google Drive</b>
+          <span className={`pill ${c.driveConectado ? 'ok' : 'err'}`}>{c.driveConectado ? 'conectado ✅' : 'no conectado'}</span>
+        </div>
+        <p className="muted sm" style={{ margin: '4px 0 10px' }}>Podés reusar el mismo cliente OAuth de Google del login (redirect: <code>http://localhost:3000/api/drive/callback</code>).</p>
+        <div className="grid2">
+          <div><label>Client ID de Google</label><input value={form.driveClientId || ''} onChange={set('driveClientId')} placeholder="xxxxx.apps.googleusercontent.com" /></div>
+          <div><label>Client Secret {c.tieneDriveSecret && <span className="muted">(guardado)</span>}</label>
+            <input type="password" value={driveSecret} onChange={(e) => setDriveSecret(e.target.value)} placeholder={c.tieneDriveSecret ? '•••••• (dejá vacío para no cambiar)' : 'Pegá el Client Secret'} /></div>
+        </div>
+        <label>Carpeta destino en Drive (opcional)</label>
+        <input value={form.driveFolderId || ''} onChange={set('driveFolderId')} placeholder="ID de la carpeta (vacío = raíz de tu Drive)" />
+        <div className="row">
+          <button className="btn btn-blue" onClick={conectarDrive}>☁️ {c.driveConectado ? 'Reconectar' : 'Conectar'} Google Drive</button>
+        </div>
+        {driveMsg && <div className={`status ${driveMsg.tipo}`}>{driveMsg.txt}</div>}
       </div>
 
       <div className="row">
