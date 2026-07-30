@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { apiFetch } from '../supabaseClient.js';
 import { soportaCarpeta, nombreCarpetaGuardada, elegirCarpeta } from '../fsFolder.js';
 import Toggle from '../ui/Toggle.jsx';
+import Icon from '../ui/Icon.jsx';
 import { useConfirm } from '../ui/Confirm.jsx';
 
 const EyeIcon = ({ off }) => (
@@ -31,7 +32,7 @@ export default function Config() {
     try {
       const nombre = await elegirCarpeta();
       setCarpetaLocal(nombre);
-      setEstado({ tipo: 'ok', txt: `📁 Carpeta local: ${nombre}` });
+      setEstado({ tipo: 'ok', txt: `Carpeta local: ${nombre}` });
     } catch (e) { if (e.name !== 'AbortError') setEstado({ tipo: 'err', txt: 'No se pudo elegir la carpeta.' }); }
   }
 
@@ -61,7 +62,7 @@ export default function Config() {
     });
     let d = {};
     try { d = await r.json(); } catch { /* sin body */ }
-    if (!silencioso) setEstado(r.ok ? { tipo: 'ok', txt: '✅ Guardado.' } : { tipo: 'err', txt: d.error || 'No se pudo guardar.' });
+    if (!silencioso) setEstado(r.ok ? { tipo: 'ok', txt: 'Guardado.' } : { tipo: 'err', txt: d.error || 'No se pudo guardar.' });
     if (r.ok) { setToken(''); cargar(); }
     return r.ok;
   }
@@ -76,7 +77,7 @@ export default function Config() {
     const popup = window.open(d.url, 'drive-oauth', 'width=520,height=640');
     function onMsg(ev) {
       if (ev.data === 'drive-true') {
-        setDriveMsg({ tipo: 'ok', txt: '✅ Google Drive conectado.' });
+        setDriveMsg({ tipo: 'ok', txt: 'Google Drive conectado.' });
         cargar(); window.removeEventListener('message', onMsg); try { popup && popup.close(); } catch { /* noop */ }
       } else if (ev.data === 'drive-false') {
         setDriveMsg({ tipo: 'err', txt: 'No se pudo conectar. Revisá las credenciales y volvé a intentar.' });
@@ -102,12 +103,12 @@ export default function Config() {
 
   async function probar() {
     await guardar();
-    setEstado({ tipo: 'loading', txt: '⏳ Probando conexión con AFIP…' });
+    setEstado({ tipo: 'loading', txt: 'Probando conexión con AFIP…' });
     const r = await apiFetch('/api/afip/test', { method: 'POST' });
     const d = await r.json();
     setEstado(d.ok
-      ? { tipo: 'ok', txt: `✅ Conexión OK (${d.ambiente}).` }
-      : { tipo: 'err', txt: `❌ ${d.error}` });
+      ? { tipo: 'ok', txt: `Conexión OK (${d.ambiente}).` }
+      : { tipo: 'err', txt: `${d.error}` });
   }
 
   async function generarCert() {
@@ -119,8 +120,8 @@ export default function Config() {
       body: JSON.stringify({ password: clave, alias }),
     });
     const d = await r.json();
-    if (d.ok) { setCert({ ok: true, msg: `✅ Certificado generado (wsfe: ${d.wsauth}).` }); setClave(''); cargar(); }
-    else setCert({ ok: false, msg: `❌ ${d.error}` });
+    if (d.ok) { setCert({ ok: true, msg: `Certificado generado (wsfe: ${d.wsauth}).` }); setClave(''); cargar(); }
+    else setCert({ ok: false, msg: `${d.error}` });
   }
 
   if (!c) return <div className="card"><div className="spinner-lg" /></div>;
@@ -150,7 +151,7 @@ export default function Config() {
       <h3>Carpeta local</h3>
       {soportaCarpeta() ? (
         <div className="row" style={{ marginTop: 0 }}>
-          <button className="btn btn-ghost" type="button" onClick={seleccionarCarpeta}>📁 Elegir carpeta…</button>
+          <button className="btn btn-ghost" type="button" onClick={seleccionarCarpeta}><Icon name="folder" /> Elegir carpeta…</button>
           <span className="muted sm">{carpetaLocal ? `Guardando en: ${carpetaLocal}` : 'Ninguna elegida (se descarga como ZIP)'}</span>
         </div>
       ) : (
@@ -160,7 +161,7 @@ export default function Config() {
       <div className="box-inner">
         <div className="box-head">
           <b>Google Drive</b>
-          <span className={`pill ${c.driveConectado ? 'ok' : 'err'}`}>{c.driveConectado ? 'conectado ✅' : 'no conectado'}</span>
+          <span className={`pill ${c.driveConectado ? 'ok' : 'err'}`}><span className="d" />{c.driveConectado ? 'conectado' : 'no conectado'}</span>
         </div>
         {c.driveDisponible ? (
           <>
@@ -169,7 +170,7 @@ export default function Config() {
             <input value={form.driveFolderId || ''} onChange={set('driveFolderId')} placeholder="ID de la carpeta (vacío = raíz de tu Drive)"
               name="drive-folder-id" autoComplete="off" data-lpignore="true" data-1p-ignore />
             <div className="row">
-              <button className="btn btn-blue" onClick={conectarDrive}>☁️ {c.driveConectado ? 'Reconectar' : 'Conectar'} Google Drive</button>
+              <button className="btn btn-blue" onClick={conectarDrive}><Icon name="cloud" /> {c.driveConectado ? 'Reconectar' : 'Conectar'} Google Drive</button>
             </div>
           </>
         ) : (
@@ -187,9 +188,9 @@ export default function Config() {
       <div className="box-inner">
         <div className="box-head">
           <b>Certificado digital</b>
-          <span className={`pill ${c.tieneCertificado ? 'ok' : 'err'}`}>{c.tieneCertificado ? 'configurado ✅' : 'no configurado'}</span>
+          <span className={`pill ${c.tieneCertificado ? 'ok' : 'err'}`}><span className="d" />{c.tieneCertificado ? 'configurado' : 'no configurado'}</span>
         </div>
-        <p className="aviso">⚠️ Tu clave fiscal se envía a afipsdk.com solo para generar el certificado y no se guarda.</p>
+        <p className="aviso"><Icon name="alert" size="15" /> Tu clave fiscal se envía a afipsdk.com solo para generar el certificado y no se guarda.</p>
         <label>Clave fiscal de AFIP</label>
         <div className="input-eye">
           <input type={verClave ? 'text' : 'password'} value={clave} onChange={(e) => setClave(e.target.value)}

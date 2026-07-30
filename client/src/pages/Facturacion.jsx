@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { apiFetch } from '../supabaseClient.js';
 import { nombreCarpetaGuardada, guardarEnCarpeta } from '../fsFolder.js';
 import { useConfirm } from '../ui/Confirm.jsx';
+import Icon from '../ui/Icon.jsx';
 import Config from './Config.jsx';
 
 const money = (n) => isNaN(Number(n)) ? n : Number(n).toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
@@ -60,7 +61,7 @@ export default function Facturacion() {
     const fd = new FormData();
     fd.append('archivo', archivo);
     fd.append('generarPdf', 'true'); // siempre generamos el PDF (se necesita para guardar)
-    setCargando(true); setEstado({ tipo: 'loading', txt: '⏳ Emitiendo en AFIP…' });
+    setCargando(true); setEstado({ tipo: 'loading', txt: 'Emitiendo en AFIP…' });
     try {
       const r = await apiFetch('/api/facturar', { method: 'POST', body: fd });
       const d = await r.json();
@@ -76,17 +77,17 @@ export default function Facturacion() {
     if (!archivo) return;
     if (!(await confirmarProduccion('programar/emitir estas facturas'))) return;
     const fd = new FormData(); fd.append('archivo', archivo);
-    setCargando(true); setEstado({ tipo: 'loading', txt: '⏳ Programando…' });
+    setCargando(true); setEstado({ tipo: 'loading', txt: 'Programando…' });
     try {
       const r = await apiFetch('/api/programar', { method: 'POST', body: fd });
       const d = await r.json();
       if (!r.ok) { setEstado({ tipo: 'err', txt: d.error }); return; }
       const partes = [];
-      if (d.emitidasAhora) partes.push(`⚡ ${d.emitidasAhora} emitida(s) ahora`);
+      if (d.emitidasAhora) partes.push(`${d.emitidasAhora} emitida(s) ahora`);
       if (d.conErrorAhora) partes.push(`${d.conErrorAhora} con error`);
       if (d.programadas) {
         const fechas = d.fechasFuturas?.length ? ` (${d.fechasFuturas.join(', ')})` : '';
-        partes.push(`📅 ${d.programadas} programada(s)${fechas}`);
+        partes.push(`${d.programadas} programada(s)${fechas}`);
       }
       setEstado({ tipo: d.conErrorAhora ? 'err' : 'ok', txt: partes.join(' · ') || 'Nada para procesar.' });
       // Si se emitió algo ahora, mostramos la tabla; si no, limpiamos.
@@ -119,7 +120,7 @@ export default function Facturacion() {
         if (!r.ok) { setGuardadoMsg({ tipo: 'err', txt: 'No hay comprobantes para guardar.' }); return; }
         try {
           const out = await guardarEnCarpeta(d.archivos);
-          setGuardadoMsg({ tipo: 'ok', txt: `✅ ${out.guardados} archivo(s) guardado(s) en "${out.carpeta}".` });
+          setGuardadoMsg({ tipo: 'ok', txt: `${out.guardados} archivo(s) guardado(s) en "${out.carpeta}".` });
           return;
         } catch (e) {
           if (e.message === 'sin_permiso') { setGuardadoMsg({ tipo: 'err', txt: 'Permiso denegado sobre la carpeta. Volvé a elegirla en Configuración.' }); return; }
@@ -146,14 +147,14 @@ export default function Facturacion() {
             types: [{ description: 'Archivo ZIP', accept: { 'application/zip': ['.zip'] } }],
           });
           const w = await handle.createWritable(); await w.write(blob); await w.close();
-          setGuardadoMsg({ tipo: 'ok', txt: '✅ Comprobantes guardados en tu carpeta.' });
+          setGuardadoMsg({ tipo: 'ok', txt: 'Comprobantes guardados en tu carpeta.' });
           return;
         } catch (e) { if (e.name === 'AbortError') return; /* si falla, sigue con descarga normal */ }
       }
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a'); a.href = url; a.download = 'comprobantes.zip'; a.click();
       URL.revokeObjectURL(url);
-      setGuardadoMsg({ tipo: 'ok', txt: '✅ Descarga iniciada.' });
+      setGuardadoMsg({ tipo: 'ok', txt: 'Descarga iniciada.' });
     } catch { setGuardadoMsg({ tipo: 'err', txt: 'Error al descargar.' }); }
     finally { setGuardando(false); }
   }
@@ -164,11 +165,11 @@ export default function Facturacion() {
       const r = await apiFetch('/api/drive/subir-ultimo', { method: 'POST' });
       const d = await r.json();
       if (r.status === 409 && d.error === 'no_conectado') {
-        setGuardadoMsg({ tipo: 'err', txt: '☁️ Google Drive no está conectado. Andá a Configuración → Google Drive para conectarlo.' });
+        setGuardadoMsg({ tipo: 'err', txt: 'Google Drive no está conectado. Andá a Configuración → Google Drive para conectarlo.' });
         return;
       }
       if (!r.ok) { setGuardadoMsg({ tipo: 'err', txt: d.error || 'No se pudo subir a Drive.' }); return; }
-      setGuardadoMsg({ tipo: 'ok', txt: `✅ ${d.subidos} archivo(s) subido(s) a Drive.`, link: d.link });
+      setGuardadoMsg({ tipo: 'ok', txt: `${d.subidos} archivo(s) subido(s) a Drive.`, link: d.link });
     } catch { setGuardadoMsg({ tipo: 'err', txt: 'Error al subir a Drive.' }); }
     finally { setGuardando(false); }
   }
@@ -209,14 +210,14 @@ export default function Facturacion() {
             {!resultado && (
               <>
                 <label className="drop">
-                  <div className="drop-ic" aria-hidden="true">⬆️</div>
+                  <div className="drop-ic" aria-hidden="true"><Icon name="upload" size="22" /></div>
                   <h3>Elegí tu Excel de facturas</h3>
                   <p>Usá la plantilla (incluye la columna de IVA). Vas a ver un resumen antes de emitir.</p>
-                  {archivo && <span className="file-tag">📄 {archivo.name}</span>}
+                  {archivo && <span className="file-tag"><Icon name="file" size="15" /> {archivo.name}</span>}
                   <input type="file" accept=".xlsx" hidden onChange={elegir} />
                 </label>
                 <div className="row">
-                  <button className="btn btn-ghost sm" onClick={() => descargar('/api/plantilla', 'plantilla-facturas.xlsx')}>⬇️ Descargar plantilla</button>
+                  <button className="btn btn-ghost sm" onClick={() => descargar('/api/plantilla', 'plantilla-facturas.xlsx')}><Icon name="download" /> Descargar plantilla</button>
                 </div>
               </>
             )}
@@ -237,9 +238,9 @@ export default function Facturacion() {
                 )}
                 <div className="row">
                   <span className="spacer" />
-                  <button className="btn btn-ghost" disabled={bloqueado} onClick={programar}>📅 Programar por fecha</button>
+                  <button className="btn btn-ghost" disabled={bloqueado} onClick={programar}><Icon name="calendar" /> Programar por fecha</button>
                   <button className="btn btn-primary" disabled={bloqueado} onClick={emitir}>
-                    {cargando ? '...' : 'Emitir ahora ⚡'}
+                    {cargando ? '...' : <><Icon name="bolt" /> Emitir ahora</>}
                   </button>
                 </div>
                 <p className="muted sm" style={{ marginTop: 10 }}>Programar: cada factura se emite sola en su “Fecha de emisión” (las sin fecha, en la próxima corrida).</p>
@@ -259,8 +260,8 @@ export default function Facturacion() {
                   <div className="save-box">
                     <b>¿Dónde querés guardar los comprobantes?</b>
                     <div className="row" style={{ marginTop: 12 }}>
-                      <button className="btn btn-primary" disabled={guardando} onClick={guardarLocal}>⬇️ Guardar en local</button>
-                      <button className="btn btn-blue" disabled={guardando} onClick={guardarEnDrive}>☁️ Guardar en Google Drive</button>
+                      <button className="btn btn-primary" disabled={guardando} onClick={guardarLocal}><Icon name="download" /> Guardar en local</button>
+                      <button className="btn btn-blue" disabled={guardando} onClick={guardarEnDrive}><Icon name="cloud" /> Guardar en Google Drive</button>
                     </div>
                     {guardadoMsg && (
                       <div className={`status ${guardadoMsg.tipo}`}>
@@ -271,7 +272,7 @@ export default function Facturacion() {
                   </div>
                 )}
                 <div className="row" style={{ marginTop: 14 }}>
-                  <button className="btn btn-ghost sm" onClick={() => descargar('/api/resultados.xlsx', 'resultados-facturas.xlsx')}>⬇️ Solo el Excel</button>
+                  <button className="btn btn-ghost sm" onClick={() => descargar('/api/resultados.xlsx', 'resultados-facturas.xlsx')}><Icon name="download" /> Solo el Excel</button>
                   <button className="btn btn-ghost sm" onClick={() => { setResultado(null); setPreview(null); setArchivo(null); setEstado(null); setGuardadoMsg(null); }}>Emitir otro lote</button>
                 </div>
                 <div className="tabla-wrap">

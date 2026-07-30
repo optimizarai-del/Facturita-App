@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient.js';
+import Icon from '../ui/Icon.jsx';
 import Facturacion from './Facturacion.jsx';
 import Dashboard from './Dashboard.jsx';
 import Clientes from './Clientes.jsx';
 
 const TABS = [
-  { key: 'Facturación', ic: '🧾', label: 'Facturación' },
-  { key: 'Dashboard', ic: '📊', label: 'Panel' },
-  { key: 'Clientes', ic: '👥', label: 'Clientes' },
+  { key: 'Facturación', ic: 'receipt', label: 'Facturación' },
+  { key: 'Dashboard', ic: 'chart', label: 'Panel' },
+  { key: 'Clientes', ic: 'users', label: 'Clientes' },
 ];
 
 export default function Home({ session, tema, toggleTema }) {
@@ -25,13 +26,13 @@ export default function Home({ session, tema, toggleTema }) {
     <div className="shell">
       <aside className="sidebar">
         <div className="brand-row">
-          <span className="logo">🧾</span>
+          <span className="logo"><Icon name="receipt" size="17" /></span>
           <span className="brand">FacturitaApp</span>
         </div>
         <div className="nav-lbl">Trabajo</div>
         {TABS.map((t) => (
           <button key={t.key} className={`nav ${tab === t.key ? 'active' : ''}`} onClick={() => setTab(t.key)}>
-            <span className="ic" aria-hidden="true">{t.ic}</span>
+            <span className="ic"><Icon name={t.ic} size="18" /></span>
             {t.label}
             {t.key === 'Clientes' && nClientes != null && <span className="count">{nClientes}</span>}
           </button>
@@ -47,7 +48,7 @@ export default function Home({ session, tema, toggleTema }) {
         <header className="topbar">
           <span className="page-title">{TABS.find((t) => t.key === tab)?.label}</span>
           <span className="right">
-            <button className="theme-btn" onClick={toggleTema} title="Cambiar tema">{tema === 'light' ? '☀️' : '🌙'}</button>
+            <button className="theme-btn" onClick={toggleTema} title="Cambiar tema" aria-label="Cambiar tema"><Icon name={tema === 'light' ? 'sun' : 'moon'} size="17" /></button>
             <button className="btn btn-ghost sm" onClick={() => supabase.auth.signOut()}>Salir</button>
           </span>
         </header>

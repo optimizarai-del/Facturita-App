@@ -2,7 +2,11 @@ import cron from 'node-cron';
 import { supabaseService } from './supabase.js';
 import { getSettings } from './settings.js';
 import { procesarFacturas } from './facturador.js';
+import { afipAccessToken } from './afip.js';
 import { mapCondicionPorDoc } from './persistencia.js';
+import { guardarResultados } from './exporter.js';
+import { generarPDFs } from './pdf.js';
+import { subirCarpetaADrive } from './drive.js';
 import { enviarResumenEmisiones, enviarAvisoFallos } from './mailer.js';
 import { log } from './log.js';
 
@@ -79,7 +83,7 @@ export async function emitirProgramadasVencidas() {
   for (const [userId, facturas] of porUsuario) {
     try {
       const settings = await getSettings(svc, userId);
-      if (!settings.cuit || !settings.accessToken) continue; // usuario sin AFIP configurado
+      if (!settings.cuit || !afipAccessToken(settings)) continue; // usuario sin AFIP configurado
 
       // Resolver condición IVA de cada receptor desde los clientes guardados.
       const condicionPorDoc = await mapCondicionPorDoc(svc, userId, facturas.map((f) => f.documento));
@@ -90,15 +94,16 @@ export async function emitirProgramadasVencidas() {
 
       const rows = facturasConCond.map(facturaARow);
 
-      let resultados;
+      let emision;
       try {
-        ({ resultados } = await procesarFacturas(rows, settings));
+        emision = await procesarFacturas(rows, settings);
       } catch (e) {
         // Falla a nivel batch (AFIP caído / sin cert): dejamos todo en 'programada'
         // para reintentar en la próxima corrida. No se pierde nada.
         log.warn('Scheduler: batch falló, se reintenta mañana', { userId, err: e.message });
         continue;
       }
+      const resultados = emision.resultados;
 
       const emitidasOk = [];
       const fallidas = [];
@@ -135,6 +140,16 @@ export async function emitirProgramadasVencidas() {
       if (fallidas.length && settings.notifEmail) {
         try { await enviarAvisoFallos(settings.notifEmail, fallidas, ambiente); }
         catch (e) { log.error('Mail aviso de fallos falló', { userId, err: e.message }); }
+      }
+      // Los comprobantes de las programadas van directo a Drive (si está conectado):
+      // nadie está para apretar "guardar", así que se suben solos.
+      if (emitidasOk.length && settings.driveRefreshToken) {
+        try {
+          const { carpeta } = await guardarResultados(emision, settings);
+          await generarPDFs(emision.resultados, settings, carpeta);
+          const out = await subirCarpetaADrive(carpeta, settings);
+          log.info('Scheduler: comprobantes subidos a Drive', { userId, subidos: out.subidos });
+        } catch (e) { log.error('Scheduler: subida a Drive falló', { userId, err: e.message }); }
       }
     } catch (e) {
       log.error('Scheduler usuario falló', { userId, err: e.message });

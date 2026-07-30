@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../supabaseClient.js';
+import Icon from '../ui/Icon.jsx';
 
 const money = (n) => Number(n || 0).toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
 const fmtFecha = (d) => d ? d.split('-').reverse().join('/') : '-';
@@ -71,7 +72,7 @@ export default function Dashboard() {
                   return (
                     <tr key={f.id}>
                       <td>{prog
-                        ? <span title="Se emite en esta fecha">📅 {fmtFecha(f.fecha_emision)}</span>
+                        ? <span title="Se emite en esta fecha"><Icon name="calendar" size="13" /> {fmtFecha(f.fecha_emision)}</span>
                         : fmtFecha(f.fecha_emision)}</td>
                       <td>{f.nombre_cliente || '-'}</td>
                       <td>{f.tipo || '-'}</td>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase, apiFetch } from '../supabaseClient.js';
 import { useConfirm } from '../ui/Confirm.jsx';
+import Icon from '../ui/Icon.jsx';
 
 export default function Clientes({ session }) {
   const confirm = useConfirm();
@@ -30,7 +31,7 @@ export default function Clientes({ session }) {
         nombre: d.nombre || f.nombre,
         condicionIVA: d.condicionIVA || f.condicionIVA,
       }));
-      setEstado({ tipo: 'ok', txt: `✅ Datos traídos de AFIP: ${d.condicionIVA || 'sin condición'}.` });
+      setEstado({ tipo: 'ok', txt: `Datos traídos de AFIP: ${d.condicionIVA || 'sin condición'}.` });
     } catch {
       setEstado({ tipo: 'err', txt: 'Error de red al consultar el padrón.' });
     } finally {
@@ -99,7 +100,7 @@ export default function Clientes({ session }) {
             </div>
             <div style={{ display: 'flex', alignItems: 'flex-end' }}>
               <button type="button" className="btn btn-ghost" onClick={buscarPadron} disabled={buscando || form.documento.replace(/\D/g, '').length !== 11}>
-                {buscando ? 'Consultando AFIP…' : '🔎 Traer datos de AFIP'}
+                {buscando ? 'Consultando AFIP…' : <><Icon name="search" /> Traer datos de AFIP</>}
               </button>
             </div>
           </div>
