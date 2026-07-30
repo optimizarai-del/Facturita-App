@@ -53,7 +53,7 @@ export default function Config() {
 
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value });
 
-  async function guardar() {
+  async function guardar(silencioso = false) {
     const body = { ...form };
     if (token.trim()) body.accessToken = token.trim();
     const r = await apiFetch('/api/config', {
@@ -61,7 +61,7 @@ export default function Config() {
     });
     let d = {};
     try { d = await r.json(); } catch { /* sin body */ }
-    setEstado(r.ok ? { tipo: 'ok', txt: '✅ Guardado.' } : { tipo: 'err', txt: d.error || 'No se pudo guardar.' });
+    if (!silencioso) setEstado(r.ok ? { tipo: 'ok', txt: '✅ Guardado.' } : { tipo: 'err', txt: d.error || 'No se pudo guardar.' });
     if (r.ok) { setToken(''); cargar(); }
     return r.ok;
   }
@@ -69,7 +69,7 @@ export default function Config() {
   // Guarda las credenciales de Drive y abre el popup de autorización de Google.
   async function conectarDrive() {
     setDriveMsg(null);
-    if (!(await guardar())) return;
+    if (!(await guardar(true))) return; // guarda en silencio (no muestra "Guardado")
     const r = await apiFetch('/api/drive/auth-url');
     const d = await r.json();
     if (!r.ok || !d.url) { setDriveMsg({ tipo: 'err', txt: d.error || 'Faltan el Client ID y Secret de Google.' }); return; }
@@ -142,37 +142,20 @@ export default function Config() {
         </div>
         <div><label>Punto de venta</label><input value={form.puntoVenta} onChange={set('puntoVenta')} /></div>
       </div>
-      <label>Domicilio (opcional)</label><input value={form.domicilio} onChange={set('domicilio')} />
-      <div className="grid2">
-        <div><label>Ingresos Brutos</label><input value={form.ingresosBrutos} onChange={set('ingresosBrutos')} /></div>
-        <div><label>Inicio de actividades</label><input value={form.inicioActividades} onChange={set('inicioActividades')} /></div>
-      </div>
+      <label>Domicilio (opcional)</label><input value={form.domicilio} onChange={set('domicilio')} autoComplete="off" />
 
-      <h3>Conexión AFIP</h3>
-      <label>Access token de AFIP SDK {c.tieneAccessToken && <span className="muted">(guardado)</span>}</label>
-      <input value={token} onChange={(e) => setToken(e.target.value)} placeholder={c.tieneAccessToken ? '•••••• (dejá vacío para no cambiar)' : 'Pegá tu access token'} />
-      <div style={{ marginTop: 14 }}>
-        <Toggle checked={!!form.production} onChange={handleProduccion} label="Usar producción (facturas reales)" />
-      </div>
+      <h3>Ambiente</h3>
+      <Toggle checked={!!form.production} onChange={handleProduccion} label="Usar producción (facturas reales)" />
 
-      <h3>Destino de salida</h3>
-      <div className="grid2">
-        <div><label>¿Dónde guardar?</label>
-          <select value={form.destinoSalida} onChange={set('destinoSalida')}>
-            <option value="local">Carpeta local</option><option value="drive">Google Drive</option><option value="ambos">Ambos</option>
-          </select>
+      <h3>Carpeta local</h3>
+      {soportaCarpeta() ? (
+        <div className="row" style={{ marginTop: 0 }}>
+          <button className="btn btn-ghost" type="button" onClick={seleccionarCarpeta}>📁 Elegir carpeta…</button>
+          <span className="muted sm">{carpetaLocal ? `Guardando en: ${carpetaLocal}` : 'Ninguna elegida (se descarga como ZIP)'}</span>
         </div>
-        <div><label>Carpeta local</label>
-          {soportaCarpeta() ? (
-            <div className="row" style={{ marginTop: 0 }}>
-              <button className="btn btn-ghost" type="button" onClick={seleccionarCarpeta}>📁 Elegir carpeta…</button>
-              <span className="muted sm">{carpetaLocal ? `Guardando en: ${carpetaLocal}` : 'Ninguna elegida (se descarga como ZIP)'}</span>
-            </div>
-          ) : (
-            <input value={form.carpetaSalida} onChange={set('carpetaSalida')} placeholder="vacío = carpeta 'salida'" />
-          )}
-        </div>
-      </div>
+      ) : (
+        <input value={form.carpetaSalida} onChange={set('carpetaSalida')} placeholder="vacío = carpeta 'salida'" autoComplete="off" />
+      )}
 
       <div className="box-inner">
         <div className="box-head">
@@ -183,7 +166,8 @@ export default function Config() {
           <>
             <p className="muted sm" style={{ margin: '4px 0 12px' }}>Conectá tu Google Drive con un click para guardar ahí los comprobantes.</p>
             <label>Carpeta destino en Drive (opcional)</label>
-            <input value={form.driveFolderId || ''} onChange={set('driveFolderId')} placeholder="ID de la carpeta (vacío = raíz de tu Drive)" />
+            <input value={form.driveFolderId || ''} onChange={set('driveFolderId')} placeholder="ID de la carpeta (vacío = raíz de tu Drive)"
+              name="drive-folder-id" autoComplete="off" data-lpignore="true" data-1p-ignore />
             <div className="row">
               <button className="btn btn-blue" onClick={conectarDrive}>☁️ {c.driveConectado ? 'Reconectar' : 'Conectar'} Google Drive</button>
             </div>
@@ -208,7 +192,8 @@ export default function Config() {
         <p className="aviso">⚠️ Tu clave fiscal se envía a afipsdk.com solo para generar el certificado y no se guarda.</p>
         <label>Clave fiscal de AFIP</label>
         <div className="input-eye">
-          <input type={verClave ? 'text' : 'password'} value={clave} onChange={(e) => setClave(e.target.value)} autoComplete="off" />
+          <input type={verClave ? 'text' : 'password'} value={clave} onChange={(e) => setClave(e.target.value)}
+            name="afip-clave-fiscal" autoComplete="new-password" data-lpignore="true" data-1p-ignore />
           <button type="button" className="eye-btn" onClick={() => setVerClave(!verClave)}
             title={verClave ? 'Ocultar' : 'Mostrar'} aria-label={verClave ? 'Ocultar clave' : 'Mostrar clave'}>
             <EyeIcon off={verClave} />

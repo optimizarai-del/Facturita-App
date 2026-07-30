@@ -1,6 +1,11 @@
 import Afip from '@afipsdk/afip.js';
 
 // Construye una instancia de Afip a partir de un objeto settings (de Supabase).
+// Token de AFIP SDK: preferimos el de la app (env) y caemos al del usuario (legacy).
+export function afipAccessToken(settings = {}) {
+  return process.env.AFIPSDK_ACCESS_TOKEN || settings.accessToken || '';
+}
+
 export function getAfipClient(settings) {
   if (!settings.cuit) {
     throw new Error('Falta configurar el CUIT');
@@ -10,7 +15,8 @@ export function getAfipClient(settings) {
     production: settings.production === true,
   };
   // AFIP SDK exige access_token incluso en homologación (sin él devuelve 401).
-  if (settings.accessToken) options.access_token = settings.accessToken;
+  const token = afipAccessToken(settings);
+  if (token) options.access_token = token;
   // Certificado y clave privada (necesarios para emitir con CUIT propio).
   if (settings.cert && settings.key) {
     options.cert = settings.cert;
@@ -100,9 +106,9 @@ export const CONDICION_IVA_ID = {
 
 // Prueba la conexión consultando el estado de los servidores de AFIP.
 export async function testConnection(settings) {
-  if (!settings.accessToken) {
+  if (!afipAccessToken(settings)) {
     throw new Error(
-      'Falta el access_token de AFIP SDK. Obtenelo gratis en https://app.afipsdk.com/ y pegalo en la configuración.'
+      'Falta el access token de AFIP SDK a nivel servidor (AFIPSDK_ACCESS_TOKEN).'
     );
   }
   const afip = getAfipClient(settings);
@@ -119,7 +125,7 @@ export async function testConnection(settings) {
 // autoriza wsfe, y DEVUELVE cert+key (el endpoint los persiste en Supabase).
 export async function generarCertificado(settings, { password, username, alias }) {
   if (!settings.cuit) throw new Error('Falta configurar el CUIT.');
-  if (!settings.accessToken) throw new Error('Falta el access_token de AFIP SDK. Configuralo primero.');
+  if (!afipAccessToken(settings)) throw new Error('Falta el access token de AFIP SDK a nivel servidor (AFIPSDK_ACCESS_TOKEN).');
   if (!password) throw new Error('Falta la clave fiscal.');
 
   const user = String(username || settings.cuit).trim();
