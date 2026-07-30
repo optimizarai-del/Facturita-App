@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../supabaseClient.js';
 import { nombreCarpetaGuardada, guardarEnCarpeta } from '../fsFolder.js';
-import Toggle from '../ui/Toggle.jsx';
 import { useConfirm } from '../ui/Confirm.jsx';
 import Config from './Config.jsx';
 
@@ -16,8 +15,6 @@ export default function Facturacion() {
   const [resultado, setResultado] = useState(null);
   const [estado, setEstado] = useState(null); // {tipo,txt}
   const [cargando, setCargando] = useState(false);
-  const [generarPdf, setGenerarPdf] = useState(true);
-  const [subirDrive, setSubirDrive] = useState(false);
 
   // Paso actual del wizard: 1 subir · 2 revisar · 3 emitir.
   const paso = resultado ? 3 : preview ? 2 : 1;
@@ -62,8 +59,7 @@ export default function Facturacion() {
     if (!(await confirmarProduccion('emitir estas facturas ahora'))) return;
     const fd = new FormData();
     fd.append('archivo', archivo);
-    fd.append('generarPdf', generarPdf ? 'true' : 'false');
-    fd.append('subirDrive', subirDrive ? 'true' : 'false');
+    fd.append('generarPdf', 'true'); // siempre generamos el PDF (se necesita para guardar)
     setCargando(true); setEstado({ tipo: 'loading', txt: '⏳ Emitiendo en AFIP…' });
     try {
       const r = await apiFetch('/api/facturar', { method: 'POST', body: fd });
@@ -240,8 +236,6 @@ export default function Facturacion() {
                   </ul>
                 )}
                 <div className="row">
-                  <Toggle checked={generarPdf} onChange={setGenerarPdf} label="Generar PDF" />
-                  <Toggle checked={subirDrive} onChange={setSubirDrive} label="Subir a Drive" />
                   <span className="spacer" />
                   <button className="btn btn-ghost" disabled={bloqueado} onClick={programar}>📅 Programar por fecha</button>
                   <button className="btn btn-primary" disabled={bloqueado} onClick={emitir}>
