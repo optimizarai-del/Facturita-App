@@ -10,7 +10,7 @@
   "author": "Geronimo Gambuli",
   "license": "MIT",
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   },
   "dependencies": {
     "@afipsdk/afip.js": "^1.2.3",
