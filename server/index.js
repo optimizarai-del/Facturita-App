@@ -107,9 +107,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 3000;
 // Orígenes permitidos del frontend (coma-separados). El primero se usa como
-// destino del postMessage del callback de Drive.
+// destino del postMessage del callback de Drive. Se normaliza la barra final
+// para tolerar valores como "https://app.vercel.app/".
+const norm = (s) => String(s).trim().replace(/\/+$/, '');
 const ORIGENES = (process.env.CLIENT_ORIGIN || 'http://localhost:5173')
-  .split(',').map((s) => s.trim()).filter(Boolean);
+  .split(',').map(norm).filter(Boolean);
 const CLIENT_ORIGIN = ORIGENES[0];
 
 // --- Hardening ---
@@ -124,7 +126,7 @@ app.use(helmet({
 // CORS mínimo: solo el origen del frontend, con Authorization.
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  if (origin && ORIGENES.includes(origin)) {
+  if (origin && ORIGENES.includes(norm(origin))) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
