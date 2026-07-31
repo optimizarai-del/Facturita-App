@@ -105,6 +105,9 @@ const upload = multer({
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
+// Detrás del proxy de Railway/Render: confiar en el primer hop para que req.ip
+// y el rate-limit funcionen bien (X-Forwarded-For).
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
 // Orígenes permitidos del frontend (coma-separados). El primero se usa como
 // destino del postMessage del callback de Drive. Se normaliza la barra final
