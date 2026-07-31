@@ -101,16 +101,6 @@ export default function Config() {
     setForm({ ...form, production: next });
   }
 
-  async function probar() {
-    await guardar();
-    setEstado({ tipo: 'loading', txt: 'Probando conexión con AFIP…' });
-    const r = await apiFetch('/api/afip/test', { method: 'POST' });
-    const d = await r.json();
-    setEstado(d.ok
-      ? { tipo: 'ok', txt: `Conexión OK (${d.ambiente}).` }
-      : { tipo: 'err', txt: `${d.error}` });
-  }
-
   async function generarCert() {
     if (!clave) { setCert({ ok: false, msg: 'Ingresá tu clave fiscal.' }); return; }
     await guardar();
@@ -180,8 +170,7 @@ export default function Config() {
       </div>
 
       <div className="row">
-        <button className="btn btn-ghost" onClick={guardar}>Guardar</button>
-        <button className="btn btn-primary" onClick={probar}>Probar conexión</button>
+        <button className="btn btn-primary" onClick={guardar}>Guardar</button>
       </div>
       {estado && <div className={`status ${estado.tipo}`}>{estado.txt}</div>}
 
