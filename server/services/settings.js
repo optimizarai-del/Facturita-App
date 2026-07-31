@@ -87,18 +87,27 @@ export async function saveSettings(supabase, userId, patch) {
 
   const ops = [];
   if (Object.keys(profileUpd).length) {
-    ops.push(supabase.from('profiles').update(profileUpd).eq('id', userId));
+    ops.push(['profiles', supabase.from('profiles').update(profileUpd).eq('id', userId).select('id')]);
   }
   if (Object.keys(afipUpd).length) {
     afipUpd.updated_at = new Date().toISOString();
-    ops.push(supabase.from('afip_credentials').update(afipUpd).eq('user_id', userId));
+    ops.push(['afip_credentials', supabase.from('afip_credentials').update(afipUpd).eq('user_id', userId).select('user_id')]);
   }
   if (Object.keys(driveUpd).length) {
     driveUpd.updated_at = new Date().toISOString();
-    ops.push(supabase.from('drive_credentials').update(driveUpd).eq('user_id', userId));
+    ops.push(['drive_credentials', supabase.from('drive_credentials').update(driveUpd).eq('user_id', userId).select('user_id')]);
   }
-  const results = await Promise.all(ops);
+  const results = await Promise.all(ops.map(([, q]) => q));
+  results.forEach((r, i) => {
+    const tabla = ops[i][0];
+    if (r.error) console.error(`[saveSettings] ${tabla} error:`, r.error.message);
+    else console.log(`[saveSettings] ${tabla}: ${r.data?.length ?? 0} fila(s) actualizada(s) para userId=${userId}`);
+  });
   const err = results.find((r) => r.error);
   if (err) throw new Error(err.error.message);
+  // Si no se actualizó ninguna fila (RLS o fila inexistente), avisamos claro.
+  if (results.some((r) => (r.data?.length ?? 0) === 0)) {
+    throw new Error('No se pudo guardar: el registro del usuario no se actualizó (revisá permisos/RLS o que exista el perfil).');
+  }
   return getSettings(supabase, userId);
 }

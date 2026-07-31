@@ -57,14 +57,19 @@ export default function Config() {
   async function guardar(silencioso = false) {
     const body = { ...form };
     if (token.trim()) body.accessToken = token.trim();
-    const r = await apiFetch('/api/config', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-    });
-    let d = {};
-    try { d = await r.json(); } catch { /* sin body */ }
-    if (!silencioso) setEstado(r.ok ? { tipo: 'ok', txt: 'Guardado.' } : { tipo: 'err', txt: d.error || 'No se pudo guardar.' });
-    if (r.ok) { setToken(''); cargar(); }
-    return r.ok;
+    try {
+      const r = await apiFetch('/api/config', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      });
+      let d = {};
+      try { d = await r.json(); } catch { /* sin body */ }
+      if (!silencioso) setEstado(r.ok ? { tipo: 'ok', txt: 'Guardado.' } : { tipo: 'err', txt: d.error || 'No se pudo guardar.' });
+      if (r.ok) { setToken(''); cargar(); }
+      return r.ok;
+    } catch (e) {
+      setEstado({ tipo: 'err', txt: 'No se pudo conectar con el servidor para guardar.' });
+      return false;
+    }
   }
 
   // Guarda las credenciales de Drive y abre el popup de autorización de Google.
