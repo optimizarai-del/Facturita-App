@@ -106,7 +106,11 @@ const upload = multer({
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 3000;
-const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
+// Orígenes permitidos del frontend (coma-separados). El primero se usa como
+// destino del postMessage del callback de Drive.
+const ORIGENES = (process.env.CLIENT_ORIGIN || 'http://localhost:5173')
+  .split(',').map((s) => s.trim()).filter(Boolean);
+const CLIENT_ORIGIN = ORIGENES[0];
 
 // --- Hardening ---
 // helmet: cabeceras de seguridad. Se desactiva la CSP porque la página de callback
@@ -120,7 +124,7 @@ app.use(helmet({
 // CORS mínimo: solo el origen del frontend, con Authorization.
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  if (origin === CLIENT_ORIGIN) {
+  if (origin && ORIGENES.includes(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
