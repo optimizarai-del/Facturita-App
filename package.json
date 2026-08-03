@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "node server/index.js",
-    "start": "node server/index.js"
+    "start": "node server/index.js",
+    "build": "npm install --prefix client && npm run build --prefix client"
   },
   "author": "Geronimo Gambuli",
   "license": "MIT",

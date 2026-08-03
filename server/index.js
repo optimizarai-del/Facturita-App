@@ -485,8 +485,15 @@ app.post('/api/drive/subir-ultimo', requireAuth, async (req, res) => {
   }
 });
 
-// En producción, servir el build de React.
-app.use(express.static(path.join(__dirname, '..', 'client', 'dist')));
+// En producción (VPS): servir el build de React desde el mismo servidor.
+// Así el frontend y el backend comparten origen y no hace falta CORS.
+const CLIENT_DIST = path.join(__dirname, '..', 'client', 'dist');
+app.use(express.static(CLIENT_DIST));
+// Fallback SPA: cualquier ruta que no sea /api devuelve index.html.
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api/')) return next();
+  res.sendFile(path.join(CLIENT_DIST, 'index.html'), (err) => { if (err) next(); });
+});
 
 app.listen(PORT, () => {
   console.log(`FacturitaApp backend en http://localhost:${PORT}`);
