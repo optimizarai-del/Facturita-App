@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { apiFetch } from '../supabaseClient.js';
 import { nombreCarpetaGuardada, guardarEnCarpeta } from '../fsFolder.js';
 import { useConfirm } from '../ui/Confirm.jsx';
@@ -16,6 +16,7 @@ export default function Facturacion() {
   const [resultado, setResultado] = useState(null);
   const [estado, setEstado] = useState(null); // {tipo,txt}
   const [cargando, setCargando] = useState(false);
+  const fileInputRef = useRef(null);
 
   // Paso actual del wizard: 1 subir · 2 revisar · 3 emitir.
   const paso = resultado ? 3 : preview ? 2 : 1;
@@ -53,6 +54,13 @@ export default function Facturacion() {
     const f = e.target.files[0];
     setArchivo(f);
     validar(f);
+  }
+
+  // Quita el archivo elegido y limpia el preview/estado. Resetea el input para
+  // poder volver a elegir el mismo archivo (si no, onChange no dispararía).
+  function quitarArchivo() {
+    setArchivo(null); setPreview(null); setEstado(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
   async function emitir() {
@@ -214,10 +222,15 @@ export default function Facturacion() {
                   <h3>Elegí tu Excel de facturas</h3>
                   <p>Usá la plantilla (incluye la columna de IVA). Vas a ver un resumen antes de emitir.</p>
                   {archivo && <span className="file-tag"><Icon name="file" size="15" /> {archivo.name}</span>}
-                  <input type="file" accept=".xlsx" hidden onChange={elegir} />
+                  <input ref={fileInputRef} type="file" accept=".xlsx" hidden onChange={elegir} />
                 </label>
                 <div className="row">
                   <button className="btn btn-ghost sm" onClick={() => descargar('/api/plantilla', 'plantilla-facturas.xlsx')}><Icon name="download" /> Descargar plantilla</button>
+                  {archivo && (
+                    <button className="btn btn-ghost sm" disabled={cargando} onClick={quitarArchivo}>
+                      <Icon name="trash" /> Quitar archivo
+                    </button>
+                  )}
                 </div>
               </>
             )}
