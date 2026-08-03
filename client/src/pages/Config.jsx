@@ -25,6 +25,7 @@ export default function Config() {
   const [verClave, setVerClave] = useState(false);
   const [driveMsg, setDriveMsg] = useState(null);
   const [carpetaLocal, setCarpetaLocal] = useState(null); // nombre de la carpeta elegida
+  const [guardando, setGuardando] = useState(false);
 
   useEffect(() => { cargar(); nombreCarpetaGuardada().then(setCarpetaLocal); }, []);
 
@@ -54,21 +55,33 @@ export default function Config() {
 
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value });
 
-  async function guardar(silencioso = false) {
+  // silencioso=true solo cuando se llama internamente (ej. conectarDrive).
+  // Ojo: si se usa como onClick, React pasa el evento como argumento, por eso
+  // comparamos explícitamente con `true` en vez de confiar en "truthy".
+  async function guardar(silencioso) {
+    const callado = silencioso === true;
     const body = { ...form };
     if (token.trim()) body.accessToken = token.trim();
+    setGuardando(true);
+    if (!callado) setEstado(null);
     try {
       const r = await apiFetch('/api/config', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
       });
       let d = {};
       try { d = await r.json(); } catch { /* sin body */ }
-      if (!silencioso) setEstado(r.ok ? { tipo: 'ok', txt: 'Guardado.' } : { tipo: 'err', txt: d.error || 'No se pudo guardar.' });
-      if (r.ok) { setToken(''); cargar(); }
+      if (!callado) {
+        setEstado(r.ok
+          ? { tipo: 'ok', txt: 'Cambios guardados.' }
+          : { tipo: 'err', txt: d.error || 'No se pudieron guardar los cambios.' });
+      }
+      if (r.ok) { setToken(''); await cargar(); }
       return r.ok;
     } catch (e) {
-      setEstado({ tipo: 'err', txt: 'No se pudo conectar con el servidor para guardar.' });
+      if (!callado) setEstado({ tipo: 'err', txt: 'No se pudo conectar con el servidor para guardar.' });
       return false;
+    } finally {
+      setGuardando(false);
     }
   }
 
@@ -175,9 +188,11 @@ export default function Config() {
       </div>
 
       <div className="row">
-        <button className="btn btn-primary" onClick={guardar}>Guardar</button>
+        <button className="btn btn-primary" onClick={() => guardar()} disabled={guardando}>
+          {guardando ? 'Guardando…' : 'Guardar'}
+        </button>
       </div>
-      {estado && <div className={`status ${estado.tipo}`}>{estado.txt}</div>}
+      {estado && <div className={`status ${estado.tipo}`} role="status">{estado.txt}</div>}
 
       <div className="box-inner">
         <div className="box-head">

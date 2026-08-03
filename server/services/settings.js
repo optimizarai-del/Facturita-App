@@ -85,17 +85,23 @@ export async function saveSettings(supabase, userId, patch) {
     else if (k in DRIVE_MAP) driveUpd[DRIVE_MAP[k]] = v;
   }
 
+  // Usamos upsert (no update) para que, si al usuario le falta la fila en
+  // afip_credentials/drive_credentials (cuentas nuevas), se cree en vez de
+  // actualizar 0 filas y fallar el guardado.
   const ops = [];
   if (Object.keys(profileUpd).length) {
-    ops.push(['profiles', supabase.from('profiles').update(profileUpd).eq('id', userId).select('id')]);
+    profileUpd.id = userId;
+    ops.push(['profiles', supabase.from('profiles').upsert(profileUpd, { onConflict: 'id' }).select('id')]);
   }
   if (Object.keys(afipUpd).length) {
+    afipUpd.user_id = userId;
     afipUpd.updated_at = new Date().toISOString();
-    ops.push(['afip_credentials', supabase.from('afip_credentials').update(afipUpd).eq('user_id', userId).select('user_id')]);
+    ops.push(['afip_credentials', supabase.from('afip_credentials').upsert(afipUpd, { onConflict: 'user_id' }).select('user_id')]);
   }
   if (Object.keys(driveUpd).length) {
+    driveUpd.user_id = userId;
     driveUpd.updated_at = new Date().toISOString();
-    ops.push(['drive_credentials', supabase.from('drive_credentials').update(driveUpd).eq('user_id', userId).select('user_id')]);
+    ops.push(['drive_credentials', supabase.from('drive_credentials').upsert(driveUpd, { onConflict: 'user_id' }).select('user_id')]);
   }
   const results = await Promise.all(ops.map(([, q]) => q));
   results.forEach((r, i) => {
