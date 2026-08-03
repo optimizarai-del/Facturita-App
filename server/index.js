@@ -21,7 +21,7 @@ import { guardarFacturas, guardarProgramadas, mapCondicionPorDoc } from './servi
 import { enviarResumenEmisiones } from './services/mailer.js';
 import { startScheduler } from './services/scheduler.js';
 import { guardarResultados, buildResultadosWorkbook } from './services/exporter.js';
-import { generarPDFs } from './services/pdf.js';
+import { generarPDFs, regenerarPDFBuffer } from './services/pdf.js';
 import { getAuthUrl, exchangeCode, verifyState, subirCarpetaADrive, driveDisponible } from './services/drive.js';
 
 // Último resultado por usuario, para re-descargar el Excel.
@@ -482,6 +482,26 @@ app.post('/api/drive/subir-ultimo', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('Error subiendo a Drive:', err.message);
     res.status(502).json({ error: err.message || 'No se pudo subir a Google Drive' });
+  }
+});
+
+// Ver el PDF de una factura emitida (regenera el comprobante on-demand).
+app.get('/api/factura/:id/pdf', requireAuth, async (req, res) => {
+  try {
+    const { data: f, error } = await req.supabase
+      .from('facturas').select('*').eq('id', req.params.id).single();
+    if (error || !f) return res.status(404).json({ error: 'Factura no encontrada.' });
+    if (f.estado !== 'emitida' || !f.cae) {
+      return res.status(400).json({ error: 'La factura todavía no está emitida.' });
+    }
+    const settings = await getSettings(req.supabase, req.userId);
+    const { buffer, nombre } = await regenerarPDFBuffer(f, settings);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${nombre}.pdf"`);
+    res.send(buffer);
+  } catch (err) {
+    console.error('Error regenerando PDF:', err.message);
+    res.status(502).json({ error: err.message || 'No se pudo generar el PDF' });
   }
 });
 

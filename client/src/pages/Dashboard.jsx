@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { supabase } from '../supabaseClient.js';
+import { Fragment, useEffect, useMemo, useState } from 'react';
+import { supabase, apiFetch } from '../supabaseClient.js';
 import Icon from '../ui/Icon.jsx';
 
 const money = (n) => Number(n || 0).toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
@@ -11,6 +11,28 @@ export default function Dashboard() {
   const [facturas, setFacturas] = useState(null);
   const [filtro, setFiltro] = useState('todas'); // todas | emitida | error | programada
   const [visibles, setVisibles] = useState(PAGINA);
+  const [verId, setVerId] = useState(null); // factura cuyo PDF se está abriendo
+  const [verError, setVerError] = useState(null);
+
+  // Abre el PDF de una factura emitida en una pestaña nueva.
+  async function verFactura(f) {
+    setVerError(null); setVerId(f.id);
+    const win = window.open('', '_blank'); // abrir ya (evita el bloqueo de popups)
+    try {
+      const r = await apiFetch(`/api/factura/${f.id}/pdf`);
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        if (win) win.close();
+        setVerError(d.error || 'No se pudo abrir la factura.');
+        return;
+      }
+      const url = URL.createObjectURL(await r.blob());
+      if (win) win.location = url; else window.open(url, '_blank');
+    } catch {
+      if (win) win.close();
+      setVerError('Error al abrir la factura.');
+    } finally { setVerId(null); }
+  }
 
   useEffect(() => {
     supabase.from('facturas').select('*').order('created_at', { ascending: false }).limit(500)
@@ -63,23 +85,42 @@ export default function Dashboard() {
         {filtradas.length === 0 ? (
           <p className="muted" style={{ marginTop: 16 }}>Todavía no hay facturas. Emití desde la pestaña Facturación.</p>
         ) : (
+          <>
+          {verError && <div className="status err" style={{ marginTop: 12 }}>{verError}</div>}
           <div className="tabla-wrap">
             <table>
-              <thead><tr><th>Fecha</th><th>Cliente</th><th>Tipo</th><th>N°</th><th>Importe</th><th>Estado</th></tr></thead>
+              <thead><tr><th>Fecha</th><th>Cliente</th><th>Tipo</th><th>N°</th><th>Importe</th><th>Estado</th><th></th></tr></thead>
               <tbody>
                 {filtradas.slice(0, visibles).map((f) => {
                   const prog = f.estado === 'programada';
+                  const err = f.estado === 'error';
                   return (
-                    <tr key={f.id}>
-                      <td>{prog
-                        ? <span title="Se emite en esta fecha"><Icon name="calendar" size="13" /> {fmtFecha(f.fecha_emision)}</span>
-                        : fmtFecha(f.fecha_emision)}</td>
-                      <td>{f.nombre_cliente || '-'}</td>
-                      <td>{f.tipo || '-'}</td>
-                      <td>{f.nro_comprobante ? `${f.punto_venta}-${String(f.nro_comprobante).padStart(8, '0')}` : '-'}</td>
-                      <td>{money(f.importe)}</td>
-                      <td><span className={`pill ${f.estado === 'emitida' ? 'ok' : f.estado === 'error' ? 'err' : 'prog'}`}><span className="d" />{f.estado}</span></td>
-                    </tr>
+                    <Fragment key={f.id}>
+                      <tr>
+                        <td>{prog
+                          ? <span title="Se emite en esta fecha"><Icon name="calendar" size="13" /> {fmtFecha(f.fecha_emision)}</span>
+                          : fmtFecha(f.fecha_emision)}</td>
+                        <td>{f.nombre_cliente || '-'}</td>
+                        <td>{f.tipo || '-'}</td>
+                        <td>{f.nro_comprobante ? `${f.punto_venta}-${String(f.nro_comprobante).padStart(8, '0')}` : '-'}</td>
+                        <td>{money(f.importe)}</td>
+                        <td><span className={`pill ${f.estado === 'emitida' ? 'ok' : err ? 'err' : 'prog'}`}><span className="d" />{f.estado}</span></td>
+                        <td style={{ textAlign: 'right' }}>
+                          {f.estado === 'emitida'
+                            ? <button className="btn btn-ghost sm" disabled={verId === f.id} onClick={() => verFactura(f)}>
+                                {verId === f.id ? '...' : <><Icon name="file" size="14" /> Ver factura</>}
+                              </button>
+                            : prog ? <span className="muted sm">en cola</span> : ''}
+                        </td>
+                      </tr>
+                      {err && f.error_msg && (
+                        <tr className="detalle-row">
+                          <td colSpan={7}>
+                            <span className="err-badge"><Icon name="alert" size="14" /> {f.error_msg}</span>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                   );
                 })}
               </tbody>
@@ -92,6 +133,7 @@ export default function Dashboard() {
               </div>
             )}
           </div>
+          </>
         )}
       </div>
     </div>

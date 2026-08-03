@@ -192,3 +192,45 @@ export async function generarPDFs(resultados, settings, carpeta) {
 
   return { generados, errores };
 }
+
+const TIPO_CBTE = { A: 1, B: 6, C: 11 };
+function docDesde(doc) {
+  const d = String(doc ?? '').replace(/\D/g, '');
+  if (!d) return { docTipo: 99, docNro: 0 };
+  if (d.length === 11) return { docTipo: 80, docNro: Number(d) };
+  return { docTipo: 96, docNro: Number(d) };
+}
+
+// Regenera el PDF de UNA factura ya guardada (fila de la tabla `facturas`).
+// Devuelve un Buffer con el PDF. Se usa para el botón "Ver factura".
+export async function regenerarPDFBuffer(f, settings) {
+  const { docTipo, docNro } = docDesde(f.documento);
+  const r = {
+    tipoCbte: TIPO_CBTE[String(f.tipo || '').toUpperCase()] || 11,
+    puntoVenta: f.punto_venta,
+    nroComprobante: f.nro_comprobante,
+    cae: f.cae,
+    caeVto: f.cae_vto,
+    fecha: Number(String(f.fecha_emision || '').replace(/-/g, '')), // yyyymmdd
+    docTipo,
+    docNro,
+    importeNum: Number(f.importe),
+    neto: Number(f.neto || 0),
+    iva: Number(f.iva || 0),
+    nombre: f.nombre_cliente,
+    descripcion: f.descripcion,
+  };
+  const afip = getAfipClient(settings);
+  const html = await buildFacturaHTML(r, settings);
+  const nombre = `${LETRA[r.tipoCbte] || 'X'}-${String(r.puntoVenta).padStart(4, '0')}-${String(r.nroComprobante).padStart(8, '0')}`;
+  const { file } = await afip.ElectronicBilling.createPDF({
+    html, file_name: nombre,
+    options: { width: 8, marginLeft: 0.4, marginRight: 0.4, marginTop: 0.4, marginBottom: 0.4 },
+  });
+  if (typeof file === 'string' && /^https?:\/\//.test(file)) {
+    const resp = await fetch(file);
+    if (!resp.ok) throw new Error(`No se pudo descargar el PDF (HTTP ${resp.status})`);
+    return { buffer: Buffer.from(await resp.arrayBuffer()), nombre };
+  }
+  return { buffer: Buffer.from(file, 'base64'), nombre };
+}

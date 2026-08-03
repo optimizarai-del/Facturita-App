@@ -247,6 +247,9 @@ td.detalle { white-space: normal; min-width: 180px; }
 .pill.ok { background: var(--ok-bg); color: var(--ok-ink); }
 .pill.err { background: var(--err-bg); color: var(--err-ink); }
 .pill.prog { background: var(--prog-bg); color: var(--prog-ink); }
+.detalle-row td { padding-top: 0; border-top: none; }
+.err-badge { display: inline-flex; align-items: center; gap: 7px; background: var(--err-bg); color: var(--err-ink);
+  padding: 6px 11px; border-radius: 8px; font-size: 0.8rem; white-space: normal; }
 
 /* status / box / aviso */
 .status { margin-top: 14px; font-size: 0.88rem; padding: 11px 14px; border-radius: 11px; }
