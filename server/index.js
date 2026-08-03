@@ -226,7 +226,12 @@ app.post('/api/config', requireAuth, async (req, res) => {
     // necesarias (certificado + clave + access token de AFIP SDK).
     if (patch.production === true) {
       const actual = await getSettings(req.supabase, req.userId);
-      const accessToken = patch.accessToken !== undefined ? patch.accessToken : actual.accessToken;
+      // El token real se resuelve igual que en afip.js: primero el global del
+      // servidor (AFIPSDK_ACCESS_TOKEN), y si no, el del usuario. El candado
+      // tiene que mirar lo mismo, si no bloquea producción aunque el token
+      // global del servidor exista y funcione.
+      const accessToken = process.env.AFIPSDK_ACCESS_TOKEN
+        || (patch.accessToken !== undefined ? patch.accessToken : actual.accessToken);
       const faltan = [];
       if (!actual.cert || !actual.key) faltan.push('certificado digital');
       if (!accessToken) faltan.push('access token de AFIP SDK');
