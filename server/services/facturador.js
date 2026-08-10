@@ -95,6 +95,33 @@ function round2(n) {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
 
+// Convierte un número yyyymmdd a Date (medianoche local). null si no es válido.
+function numToDate(n) {
+  const s = String(n);
+  if (!/^\d{8}$/.test(s)) return null;
+  const y = +s.slice(0, 4), m = +s.slice(4, 6), d = +s.slice(6, 8);
+  const dt = new Date(y, m - 1, d);
+  dt.setHours(0, 0, 0, 0);
+  return Number.isNaN(dt.getTime()) ? null : dt;
+}
+
+// AFIP exige que la fecha del comprobante (CbteFch) esté dentro de una ventana
+// respecto de HOY: ±5 días para Productos, ±10 para Servicios/Ambos. Además no
+// puede ser anterior al último comprobante autorizado. Si la fecha de la fila
+// cae fuera de esa ventana (típico al emitir hoy algo fechado semanas atrás),
+// usamos HOY —que es cuando AFIP realmente autoriza— para que la emisión no
+// se rechace con el error 10016. La fecha original de la fila se sigue usando
+// para el período de servicio del comprobante.
+function ajustarFechaCbte(fechaNum, concepto) {
+  const maxDias = concepto === CONCEPTO.productos ? 5 : 10;
+  const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+  const d = numToDate(fechaNum);
+  if (!d) return yyyymmdd(hoy);
+  const diffDias = Math.round((d.getTime() - hoy.getTime()) / 86400000);
+  if (diffDias < -maxDias || diffDias > maxDias) return yyyymmdd(hoy);
+  return fechaNum;
+}
+
 // Valida y arma el objeto de comprobante para afip.js. Lanza Error con mensaje claro.
 export function buildVoucherData(row, settings) {
   const tipoLetra = String(row.tipo ?? '').trim().toUpperCase();
@@ -125,8 +152,10 @@ export function buildVoucherData(row, settings) {
   const condicionRecId = condicionReceptorId(row, DocTipo);
 
   const hoy = yyyymmdd();
-  // Fecha del comprobante: la de la fila si vino, si no hoy.
-  const fechaCbte = row.fechaEmision || hoy;
+  // Fecha de la fila (si vino); se usa para el período de servicio.
+  const fechaFila = row.fechaEmision || hoy;
+  // Fecha del comprobante ajustada a la ventana que acepta AFIP.
+  const fechaCbte = ajustarFechaCbte(fechaFila, Concepto);
   const data = {
     CantReg: 1,
     PtoVta: Number(settings.puntoVenta) || 1,
@@ -170,9 +199,12 @@ export function buildVoucherData(row, settings) {
   // Para servicios (o ambos) AFIP exige fechas del período de servicio.
   // Se usan las de la fila si vinieron; si no, la fecha del comprobante.
   if (Concepto === CONCEPTO.servicios || Concepto === CONCEPTO.ambos) {
-    data.FchServDesde = row.fechaServicioDesde || fechaCbte;
-    data.FchServHasta = row.fechaServicioHasta || fechaCbte;
-    data.FchVtoPago = row.fechaVencimiento || fechaCbte;
+    // El período de servicio sí puede quedar en el pasado (usa la fecha de la fila).
+    data.FchServDesde = row.fechaServicioDesde || fechaFila;
+    data.FchServHasta = row.fechaServicioHasta || fechaFila;
+    // El vencimiento de pago no puede ser anterior a la fecha del comprobante.
+    const vto = row.fechaVencimiento || fechaCbte;
+    data.FchVtoPago = Number(vto) < Number(fechaCbte) ? fechaCbte : vto;
   }
 
   return data;
