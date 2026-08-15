@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient.js';
 import Icon from '../ui/Icon.jsx';
+import Logo from '../ui/Logo.jsx';
 import Facturacion from './Facturacion.jsx';
 import Dashboard from './Dashboard.jsx';
 import Clientes from './Clientes.jsx';
@@ -26,8 +27,8 @@ export default function Home({ session, tema, toggleTema }) {
     <div className="shell">
       <aside className="sidebar">
         <div className="brand-row">
-          <span className="logo"><Icon name="receipt" size="17" /></span>
-          <span className="brand">FacturitaApp</span>
+          <span className="logo"><Logo size={18} /></span>
+          <span className="brand">Facturas Masivas</span>
         </div>
         <div className="nav-lbl">Trabajo</div>
         {TABS.map((t) => (

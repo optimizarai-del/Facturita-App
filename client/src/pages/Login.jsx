@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { supabase } from '../supabaseClient.js';
 import Icon from '../ui/Icon.jsx';
+import Logo from '../ui/Logo.jsx';
 
 export default function Login({ tema, toggleTema }) {
   const [modo, setModo] = useState('login'); // 'login' | 'registro'
@@ -46,8 +47,8 @@ export default function Login({ tema, toggleTema }) {
         <Icon name={tema === 'light' ? 'sun' : 'moon'} size="17" />
       </button>
       <div className="auth-card">
-        <div className="auth-logo"><Icon name="receipt" size="26" style={{ color: '#fff' }} /></div>
-        <h1>FacturitaApp</h1>
+        <div className="auth-logo"><Logo size={28} style={{ color: '#fff' }} /></div>
+        <h1>Facturas Masivas</h1>
         <p className="muted">{modo === 'login' ? 'Iniciá sesión para continuar' : 'Creá tu cuenta'}</p>
 
         <form onSubmit={submit}>
