@@ -104,6 +104,36 @@ export const CONDICION_IVA_ID = {
   'IVA No Alcanzado': 15,
 };
 
+// --- Verificación de comprobantes emitidos (constatación) ---
+// Tipo de comprobante (letra) -> Id AFIP. Acepta mayúsculas o minúsculas.
+const TIPO_CBTE_VERIF = { a: 1, b: 6, c: 11 };
+
+// Consulta en AFIP/ARCA un comprobante YA emitido (FECompConsultar) para
+// confirmar que existe y traer sus datos oficiales (CAE, importe, fecha).
+// Devuelve { existe:false } si ARCA no lo encuentra (comprobante inexistente).
+export async function verificarComprobante(settings, { tipo, puntoVenta, numero }) {
+  const CbteTipo = TIPO_CBTE_VERIF[String(tipo ?? '').trim().toLowerCase()];
+  if (!CbteTipo) throw new Error(`Tipo de comprobante inválido: "${tipo}" (A, B o C).`);
+  const pv = Number(puntoVenta);
+  const nro = Number(numero);
+  if (!pv || !nro) throw new Error('Falta el punto de venta o el número de comprobante.');
+  if (!afipAccessToken(settings)) {
+    throw new Error('Falta el access token de AFIP SDK a nivel servidor (AFIPSDK_ACCESS_TOKEN).');
+  }
+  const afip = getAfipClient(settings);
+  const info = await afip.ElectronicBilling.getVoucherInfo(nro, pv, CbteTipo);
+  if (!info) return { existe: false };
+  return {
+    existe: true,
+    cae: info.CodAutorizacion != null ? String(info.CodAutorizacion) : '',
+    caeVto: info.FchVto || '',
+    fecha: info.CbteFch || '',        // yyyymmdd
+    importe: info.ImpTotal != null ? Number(info.ImpTotal) : null,
+    docNro: info.DocNro != null ? String(info.DocNro) : '',
+    resultado: info.Resultado || '',  // 'A' aprobado / 'R' rechazado
+  };
+}
+
 // Prueba la conexión consultando el estado de los servidores de AFIP.
 export async function testConnection(settings) {
   if (!afipAccessToken(settings)) {

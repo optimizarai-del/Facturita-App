@@ -13,6 +13,22 @@ export default function Dashboard() {
   const [visibles, setVisibles] = useState(PAGINA);
   const [verId, setVerId] = useState(null); // factura cuyo PDF se está abriendo
   const [verError, setVerError] = useState(null);
+  const [verif, setVerif] = useState({}); // id -> {estado:'ok'|'fail'|'error', txt}
+  const [verificandoId, setVerificandoId] = useState(null);
+
+  // Consulta el comprobante en ARCA (FECompConsultar) y muestra un badge.
+  async function verificarArca(f) {
+    setVerificandoId(f.id);
+    try {
+      const r = await apiFetch(`/api/factura/${f.id}/verificar`);
+      const d = await r.json();
+      if (!r.ok) { setVerif((v) => ({ ...v, [f.id]: { estado: 'error', txt: d.error || 'Error al verificar.' } })); return; }
+      if (d.verificada) setVerif((v) => ({ ...v, [f.id]: { estado: 'ok', txt: 'Verificada en ARCA' } }));
+      else if (!d.arca?.existe) setVerif((v) => ({ ...v, [f.id]: { estado: 'fail', txt: 'ARCA no la encuentra' } }));
+      else setVerif((v) => ({ ...v, [f.id]: { estado: 'fail', txt: 'No coincide con ARCA' } }));
+    } catch { setVerif((v) => ({ ...v, [f.id]: { estado: 'error', txt: 'Error de red.' } })); }
+    finally { setVerificandoId(null); }
+  }
 
   // Abre el PDF de una factura emitida en una pestaña nueva.
   async function verFactura(f) {
@@ -107,9 +123,20 @@ export default function Dashboard() {
                         <td><span className={`pill ${f.estado === 'emitida' ? 'ok' : err ? 'err' : 'prog'}`}><span className="d" />{f.estado}</span></td>
                         <td style={{ textAlign: 'right' }}>
                           {f.estado === 'emitida'
-                            ? <button className="btn btn-ghost sm" disabled={verId === f.id} onClick={() => verFactura(f)}>
-                                {verId === f.id ? '...' : <><Icon name="file" size="14" /> Ver factura</>}
-                              </button>
+                            ? <div className="row" style={{ marginTop: 0, gap: 6, justifyContent: 'flex-end' }}>
+                                {verif[f.id]
+                                  ? <span
+                                      className={`pill ${verif[f.id].estado === 'ok' ? 'ok' : 'err'}`}
+                                      title={verif[f.id].estado === 'error' ? verif[f.id].txt : undefined}>
+                                      <span className="d" />{verif[f.id].txt}
+                                    </span>
+                                  : <button className="btn btn-ghost sm" disabled={verificandoId === f.id} onClick={() => verificarArca(f)}>
+                                      {verificandoId === f.id ? '...' : <><Icon name="check" size="14" /> Verificar en ARCA</>}
+                                    </button>}
+                                <button className="btn btn-ghost sm" disabled={verId === f.id} onClick={() => verFactura(f)}>
+                                  {verId === f.id ? '...' : <><Icon name="file" size="14" /> Ver factura</>}
+                                </button>
+                              </div>
                             : prog ? <span className="muted sm">en cola</span> : ''}
                         </td>
                       </tr>

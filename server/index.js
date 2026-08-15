@@ -14,7 +14,7 @@ import { log } from './services/log.js';
 import { cifradoDisponible } from './services/crypto.js';
 import { buildTemplateWorkbook } from './services/template.js';
 import { getSettings, saveSettings } from './services/settings.js';
-import { testConnection, generarCertificado, consultarPadron } from './services/afip.js';
+import { testConnection, generarCertificado, consultarPadron, verificarComprobante } from './services/afip.js';
 import { readFacturasFromBuffer } from './services/reader.js';
 import { procesarFacturas, validarFilas } from './services/facturador.js';
 import { guardarFacturas, guardarProgramadas, mapCondicionPorDoc } from './services/persistencia.js';
@@ -507,6 +507,43 @@ app.get('/api/factura/:id/pdf', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('Error regenerando PDF:', err.message);
     res.status(502).json({ error: err.message || 'No se pudo generar el PDF' });
+  }
+});
+
+// Verifica un comprobante emitido contra AFIP/ARCA (FECompConsultar): confirma
+// que existe y que el CAE e importe coinciden con lo guardado en la app.
+app.get('/api/factura/:id/verificar', sensitiveLimiter, requireAuth, async (req, res) => {
+  try {
+    const { data: f, error } = await req.supabase
+      .from('facturas').select('*').eq('id', req.params.id).single();
+    if (error || !f) return res.status(404).json({ error: 'Factura no encontrada.' });
+    if (f.estado !== 'emitida' || !f.nro_comprobante) {
+      return res.status(400).json({ error: 'La factura todavía no está emitida.' });
+    }
+    const settings = await getSettings(req.supabase, req.userId);
+    // Consultar el MISMO ambiente en que se emitió (no el activo del usuario):
+    // una factura de producción no existe en homologación y viceversa.
+    const settingsVerif = { ...settings, production: f.ambiente === 'producción' };
+    const info = await verificarComprobante(settingsVerif, {
+      tipo: f.tipo, puntoVenta: f.punto_venta, numero: f.nro_comprobante,
+    });
+    if (!info.existe) {
+      return res.json({ ok: true, verificada: false, motivo: 'ARCA no encontró el comprobante.' });
+    }
+    const caeCoincide = !f.cae || !info.cae || String(f.cae) === String(info.cae);
+    const importeArca = info.importe;
+    const importeCoincide = importeArca == null || Math.abs(importeArca - Number(f.importe || 0)) < 0.5;
+    res.json({
+      ok: true,
+      verificada: caeCoincide && importeCoincide,
+      caeCoincide,
+      importeCoincide,
+      arca: info,
+      ambiente: settings.production ? 'producción' : 'homologación',
+    });
+  } catch (err) {
+    console.error('Error verificando en ARCA:', err.message);
+    res.status(502).json({ error: err.message || 'No se pudo verificar en ARCA.' });
   }
 });
 
