@@ -533,9 +533,16 @@ app.get('/api/factura/:id/verificar', sensitiveLimiter, requireAuth, async (req,
     const caeCoincide = !f.cae || !info.cae || String(f.cae) === String(info.cae);
     const importeArca = info.importe;
     const importeCoincide = importeArca == null || Math.abs(importeArca - Number(f.importe || 0)) < 0.5;
+    const verificada = caeCoincide && importeCoincide;
+    // Persistimos el resultado para que el badge quede fijo (no se pierda al recargar).
+    if (verificada) {
+      await req.supabase.from('facturas')
+        .update({ verificada_arca: true, verificada_at: new Date().toISOString() })
+        .eq('id', f.id);
+    }
     res.json({
       ok: true,
-      verificada: caeCoincide && importeCoincide,
+      verificada,
       caeCoincide,
       importeCoincide,
       arca: info,

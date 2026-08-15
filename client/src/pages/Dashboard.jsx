@@ -52,7 +52,14 @@ export default function Dashboard() {
 
   useEffect(() => {
     supabase.from('facturas').select('*').order('created_at', { ascending: false }).limit(500)
-      .then(({ data }) => setFacturas(data || []));
+      .then(({ data }) => {
+        const rows = data || [];
+        setFacturas(rows);
+        // Precargar badges de las que ya fueron verificadas en ARCA (persistido en DB).
+        const yaVerif = {};
+        for (const f of rows) if (f.verificada_arca) yaVerif[f.id] = { estado: 'ok', txt: 'Verificada en ARCA' };
+        setVerif(yaVerif);
+      });
   }, []);
 
   const metricas = useMemo(() => {
