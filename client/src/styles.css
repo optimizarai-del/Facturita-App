@@ -241,8 +241,13 @@ input::placeholder { color: var(--muted); }
 .mcard .val { font-size: 1.55rem; font-weight: 600; letter-spacing: -0.02em; overflow-wrap: anywhere; }
 @media (max-width: 480px) { .mcard .val { font-size: 1.2rem; } }
 
-/* acciones en tabla: en una sola línea (la tabla ya scrollea si hace falta) */
+/* acciones en tabla: botones solo-ícono para que la fila entre sin scroll */
 .acciones { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: nowrap; margin-top: 0; }
+.btn.icon { padding: 6px; line-height: 0; }
+.pill.icon { padding: 5px; }
+.pill.icon .d { display: none; }
+/* nombre de cliente: se recorta con … si es muy largo (no ensancha la tabla) */
+td.cliente { max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
 .mcard .val.ok { color: var(--accent-soft-ink); } .mcard .val.err { color: var(--err-ink); } .mcard .val.prog { color: var(--prog-ink); }
 
 /* tabla */

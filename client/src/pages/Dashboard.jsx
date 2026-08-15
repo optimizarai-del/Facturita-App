@@ -219,7 +219,7 @@ export default function Dashboard() {
                         <td>{prog
                           ? <span title="Se emite en esta fecha"><Icon name="calendar" size="13" /> {fmtFecha(f.fecha_emision)}</span>
                           : fmtFecha(f.fecha_emision)}</td>
-                        <td>{f.nombre_cliente || '-'}</td>
+                        <td className="cliente" title={f.nombre_cliente || ''}>{f.nombre_cliente || '-'}</td>
                         <td>{f.tipo || '-'}</td>
                         <td>{f.nro_comprobante ? `${f.punto_venta}-${String(f.nro_comprobante).padStart(8, '0')}` : '-'}</td>
                         <td>{money(f.importe)}</td>
@@ -232,15 +232,17 @@ export default function Dashboard() {
                             ? <div className="acciones">
                                 {verif[f.id]
                                   ? <span
-                                      className={`pill ${verif[f.id].estado === 'ok' ? 'ok' : 'err'}`}
-                                      title={verif[f.id].txt}>
-                                      <span className="d" />{verif[f.id].estado === 'ok' ? 'Verificada' : verif[f.id].txt}
+                                      className={`pill icon ${verif[f.id].estado === 'ok' ? 'ok' : 'err'}`}
+                                      title={verif[f.id].estado === 'ok' ? 'Verificada en ARCA' : verif[f.id].txt}>
+                                      <Icon name={verif[f.id].estado === 'ok' ? 'check' : 'alert'} size="14" />
                                     </span>
-                                  : <button className="btn btn-ghost sm" disabled={verificandoId === f.id} onClick={() => verificarArca(f)}>
-                                      {verificandoId === f.id ? '...' : <><Icon name="check" size="14" /> Verificar</>}
+                                  : <button className="btn btn-ghost sm icon" title="Verificar en ARCA"
+                                      disabled={verificandoId === f.id} onClick={() => verificarArca(f)}>
+                                      {verificandoId === f.id ? '…' : <Icon name="check" size="15" />}
                                     </button>}
-                                <button className="btn btn-ghost sm" disabled={verId === f.id} onClick={() => verFactura(f)}>
-                                  {verId === f.id ? '...' : <><Icon name="file" size="14" /> Ver PDF</>}
+                                <button className="btn btn-ghost sm icon" title="Ver factura (PDF)"
+                                  disabled={verId === f.id} onClick={() => verFactura(f)}>
+                                  {verId === f.id ? '…' : <Icon name="file" size="15" />}
                                 </button>
                               </div>
                             : prog ? <span className="muted sm">en cola</span> : ''}
