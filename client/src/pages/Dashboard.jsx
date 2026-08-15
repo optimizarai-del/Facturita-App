@@ -15,6 +15,36 @@ export default function Dashboard() {
   const [verError, setVerError] = useState(null);
   const [verif, setVerif] = useState({}); // id -> {estado:'ok'|'fail'|'error', txt}
   const [verificandoId, setVerificandoId] = useState(null);
+  const [verifTodas, setVerifTodas] = useState(null); // {cargando} | {tipo,txt}
+
+  // Recarga las facturas desde Supabase (para refrescar badges persistidos).
+  async function recargar() {
+    const { data } = await supabase.from('facturas').select('*').order('created_at', { ascending: false }).limit(500);
+    const rows = data || [];
+    setFacturas(rows);
+    const yaVerif = {};
+    for (const f of rows) if (f.verificada_arca) yaVerif[f.id] = { estado: 'ok', txt: 'Verificada en ARCA' };
+    setVerif(yaVerif);
+  }
+
+  // Verifica en ARCA, de una, todas las emitidas que aún no fueron verificadas.
+  async function verificarTodas() {
+    setVerifTodas({ cargando: true });
+    try {
+      const r = await apiFetch('/api/facturas/verificar-todas', { method: 'POST' });
+      const d = await r.json();
+      if (!r.ok) { setVerifTodas({ tipo: 'err', txt: d.error || 'No se pudo verificar el lote.' }); return; }
+      await recargar();
+      if (d.total === 0) { setVerifTodas({ tipo: 'ok', txt: 'No había facturas pendientes de verificar.' }); return; }
+      const extra = [];
+      if (d.noEncontradas) extra.push(`${d.noEncontradas} sin coincidencia`);
+      if (d.errores) extra.push(`${d.errores} con error`);
+      setVerifTodas({
+        tipo: d.noEncontradas || d.errores ? 'err' : 'ok',
+        txt: `${d.verificadas} verificada(s)${extra.length ? ' · ' + extra.join(' · ') : ''}.`,
+      });
+    } catch { setVerifTodas({ tipo: 'err', txt: 'Error de red al verificar el lote.' }); }
+  }
 
   // Consulta el comprobante en ARCA (FECompConsultar) y muestra un badge.
   async function verificarArca(f) {
@@ -100,11 +130,19 @@ export default function Dashboard() {
       <div className="card">
         <div className="row" style={{ marginTop: 0, justifyContent: 'space-between' }}>
           <b>Historial de facturas</b>
-          <select value={filtro} onChange={(e) => setFiltro(e.target.value)} style={{ width: 'auto' }}>
-            <option value="todas">Todas</option><option value="emitida">Emitidas</option>
-            <option value="programada">Programadas</option><option value="error">Con error</option>
-          </select>
+          <div className="row" style={{ marginTop: 0, gap: 8 }}>
+            <button className="btn btn-ghost sm" disabled={verifTodas?.cargando} onClick={verificarTodas}>
+              {verifTodas?.cargando ? 'Verificando…' : <><Icon name="check" size="14" /> Verificar todas en ARCA</>}
+            </button>
+            <select value={filtro} onChange={(e) => setFiltro(e.target.value)} style={{ width: 'auto' }}>
+              <option value="todas">Todas</option><option value="emitida">Emitidas</option>
+              <option value="programada">Programadas</option><option value="error">Con error</option>
+            </select>
+          </div>
         </div>
+        {verifTodas && !verifTodas.cargando && (
+          <div className={`status ${verifTodas.tipo}`} style={{ marginTop: 10 }}>{verifTodas.txt}</div>
+        )}
         {filtradas.length === 0 ? (
           <p className="muted" style={{ marginTop: 16 }}>Todavía no hay facturas. Emití desde la pestaña Facturación.</p>
         ) : (

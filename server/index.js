@@ -554,6 +554,54 @@ app.get('/api/factura/:id/verificar', sensitiveLimiter, requireAuth, async (req,
   }
 });
 
+// Verifica en ARCA todas las facturas emitidas que aún no fueron verificadas.
+// Server-side (una sola request) con concurrencia limitada para no chocar el
+// rate-limit por-request ni timeoutear con lotes grandes.
+app.post('/api/facturas/verificar-todas', apiLimiter, requireAuth, async (req, res) => {
+  try {
+    const { data: pendientes, error } = await req.supabase
+      .from('facturas').select('*')
+      .eq('estado', 'emitida').eq('verificada_arca', false)
+      .not('nro_comprobante', 'is', null)
+      .limit(200);
+    if (error) return res.status(500).json({ error: 'No se pudieron leer las facturas.' });
+    if (!pendientes?.length) return res.json({ ok: true, total: 0, verificadas: 0, noEncontradas: 0, errores: 0 });
+
+    const settings = await getSettings(req.supabase, req.userId);
+    let verificadas = 0, noEncontradas = 0, errores = 0;
+
+    async function procesar(f) {
+      try {
+        const settingsVerif = { ...settings, production: f.ambiente === 'producción' };
+        const info = await verificarComprobante(settingsVerif, {
+          tipo: f.tipo, puntoVenta: f.punto_venta, numero: f.nro_comprobante,
+        });
+        if (!info.existe) { noEncontradas += 1; return; }
+        const caeOk = !f.cae || !info.cae || String(f.cae) === String(info.cae);
+        const impOk = info.importe == null || Math.abs(info.importe - Number(f.importe || 0)) < 0.5;
+        if (caeOk && impOk) {
+          await req.supabase.from('facturas')
+            .update({ verificada_arca: true, verificada_at: new Date().toISOString() })
+            .eq('id', f.id);
+          verificadas += 1;
+        } else { noEncontradas += 1; }
+      } catch { errores += 1; }
+    }
+
+    // Pool de concurrencia (5 en paralelo).
+    const CONCURRENCIA = 5;
+    for (let i = 0; i < pendientes.length; i += CONCURRENCIA) {
+      // eslint-disable-next-line no-await-in-loop
+      await Promise.all(pendientes.slice(i, i + CONCURRENCIA).map(procesar));
+    }
+
+    res.json({ ok: true, total: pendientes.length, verificadas, noEncontradas, errores });
+  } catch (err) {
+    console.error('Error en verificar-todas:', err.message);
+    res.status(502).json({ error: err.message || 'No se pudo verificar el lote.' });
+  }
+});
+
 // En producción (VPS): servir el build de React desde el mismo servidor.
 // Así el frontend y el backend comparten origen y no hace falta CORS.
 const CLIENT_DIST = path.join(__dirname, '..', 'client', 'dist');
