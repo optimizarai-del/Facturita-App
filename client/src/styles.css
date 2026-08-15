@@ -238,8 +238,9 @@ input::placeholder { color: var(--muted); }
 .mcard { background: var(--panel); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 16px 18px;
   display: flex; flex-direction: column; gap: 7px; box-shadow: var(--shadow-card); min-width: 0; }
 .mcard .lbl { font-size: 0.76rem; color: var(--text2); }
-.mcard .val { font-size: 1.55rem; font-weight: 600; letter-spacing: -0.02em; overflow-wrap: anywhere; }
-@media (max-width: 480px) { .mcard .val { font-size: 1.2rem; } }
+.mcard .val { font-size: 1.55rem; font-weight: 600; letter-spacing: -0.02em; white-space: nowrap; }
+@media (max-width: 900px) { .mcard .val { font-size: 1.3rem; } }
+@media (max-width: 480px) { .mcard .val { font-size: 1.1rem; } }
 
 /* acciones en tabla: botones solo-ícono para que la fila entre sin scroll */
 .acciones { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: nowrap; margin-top: 0; }
