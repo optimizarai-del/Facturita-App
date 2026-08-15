@@ -151,18 +151,18 @@ export default function Dashboard() {
     <div>
       <h2>Dashboard</h2>
 
-      <div className="row" style={{ marginTop: 0, gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+      <div className="filtros">
         <div>
-          <label className="muted sm">Ambiente</label>
-          <select value={ambiente} onChange={(e) => setAmbiente(e.target.value)} style={{ width: 'auto' }}>
+          <label>Ambiente</label>
+          <select value={ambiente} onChange={(e) => setAmbiente(e.target.value)}>
             <option value="produccion">Producción</option>
             <option value="pruebas">Pruebas</option>
             <option value="todos">Todos</option>
           </select>
         </div>
         <div>
-          <label className="muted sm">Período</label>
-          <select value={rango} onChange={(e) => setRango(e.target.value)} style={{ width: 'auto' }}>
+          <label>Período</label>
+          <select value={rango} onChange={(e) => setRango(e.target.value)}>
             <option value="mes">Mes actual</option>
             <option value="mesAnterior">Mes anterior</option>
             <option value="3meses">Últimos 3 meses</option>
@@ -172,8 +172,8 @@ export default function Dashboard() {
         </div>
         {rango === 'personalizado' && (
           <>
-            <div><label className="muted sm">Desde</label><input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} style={{ width: 'auto' }} /></div>
-            <div><label className="muted sm">Hasta</label><input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} style={{ width: 'auto' }} /></div>
+            <div><label>Desde</label><input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} /></div>
+            <div><label>Hasta</label><input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} /></div>
           </>
         )}
       </div>
@@ -190,7 +190,7 @@ export default function Dashboard() {
           <b>Historial de facturas</b>
           <div className="row" style={{ marginTop: 0, gap: 8 }}>
             <button className="btn btn-ghost sm" disabled={verifTodas?.cargando} onClick={verificarTodas}>
-              {verifTodas?.cargando ? 'Verificando…' : <><Icon name="check" size="14" /> Verificar todas en ARCA</>}
+              {verifTodas?.cargando ? 'Verificando…' : <><Icon name="check" size="14" /> Verificar todas</>}
             </button>
             <select value={filtro} onChange={(e) => setFiltro(e.target.value)} style={{ width: 'auto' }}>
               <option value="todas">Todas</option><option value="emitida">Emitidas</option>
@@ -229,18 +229,18 @@ export default function Dashboard() {
                         </td>
                         <td style={{ textAlign: 'right' }}>
                           {f.estado === 'emitida'
-                            ? <div className="row" style={{ marginTop: 0, gap: 6, justifyContent: 'flex-end' }}>
+                            ? <div className="acciones">
                                 {verif[f.id]
                                   ? <span
                                       className={`pill ${verif[f.id].estado === 'ok' ? 'ok' : 'err'}`}
-                                      title={verif[f.id].estado === 'error' ? verif[f.id].txt : undefined}>
-                                      <span className="d" />{verif[f.id].txt}
+                                      title={verif[f.id].txt}>
+                                      <span className="d" />{verif[f.id].estado === 'ok' ? 'Verificada' : verif[f.id].txt}
                                     </span>
                                   : <button className="btn btn-ghost sm" disabled={verificandoId === f.id} onClick={() => verificarArca(f)}>
-                                      {verificandoId === f.id ? '...' : <><Icon name="check" size="14" /> Verificar en ARCA</>}
+                                      {verificandoId === f.id ? '...' : <><Icon name="check" size="14" /> Verificar</>}
                                     </button>}
                                 <button className="btn btn-ghost sm" disabled={verId === f.id} onClick={() => verFactura(f)}>
-                                  {verId === f.id ? '...' : <><Icon name="file" size="14" /> Ver factura</>}
+                                  {verId === f.id ? '...' : <><Icon name="file" size="14" /> Ver PDF</>}
                                 </button>
                               </div>
                             : prog ? <span className="muted sm">en cola</span> : ''}
