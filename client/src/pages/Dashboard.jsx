@@ -7,6 +7,21 @@ const fmtFecha = (d) => d ? d.split('-').reverse().join('/') : '-';
 
 const PAGINA = 50;
 
+// yyyy-mm-dd local (sin corrimiento por timezone).
+const ymd = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+
+// Devuelve { desde, hasta } (yyyy-mm-dd, inclusive) para el rango elegido.
+// null en un extremo = sin límite.
+function boundsRango(rango, desde, hasta) {
+  const now = new Date();
+  const y = now.getFullYear(), m = now.getMonth();
+  if (rango === 'mes') return { desde: ymd(new Date(y, m, 1)), hasta: ymd(new Date(y, m + 1, 0)) };
+  if (rango === 'mesAnterior') return { desde: ymd(new Date(y, m - 1, 1)), hasta: ymd(new Date(y, m, 0)) };
+  if (rango === '3meses') return { desde: ymd(new Date(y, m - 2, 1)), hasta: ymd(new Date(y, m + 1, 0)) };
+  if (rango === 'personalizado') return { desde: desde || null, hasta: hasta || null };
+  return { desde: null, hasta: null }; // 'todo'
+}
+
 export default function Dashboard() {
   const [facturas, setFacturas] = useState(null);
   const [filtro, setFiltro] = useState('todas'); // todas | emitida | error | programada
@@ -16,6 +31,10 @@ export default function Dashboard() {
   const [verif, setVerif] = useState({}); // id -> {estado:'ok'|'fail'|'error', txt}
   const [verificandoId, setVerificandoId] = useState(null);
   const [verifTodas, setVerifTodas] = useState(null); // {cargando} | {tipo,txt}
+  const [ambiente, setAmbiente] = useState('produccion'); // produccion | pruebas | todos
+  const [rango, setRango] = useState('mes'); // mes | mesAnterior | 3meses | todo | personalizado
+  const [desde, setDesde] = useState(''); // yyyy-mm-dd (rango personalizado)
+  const [hasta, setHasta] = useState('');
 
   // Recarga las facturas desde Supabase (para refrescar badges persistidos).
   async function recargar() {
@@ -92,36 +111,75 @@ export default function Dashboard() {
       });
   }, []);
 
+  // Base: facturas que pasan los filtros de ambiente y rango de fecha.
+  const base = useMemo(() => {
+    const f = facturas || [];
+    const b = boundsRango(rango, desde, hasta);
+    const matchAmb = (x) => ambiente === 'todos' ? true
+      : ambiente === 'produccion' ? x.ambiente === 'producción'
+        : x.ambiente !== 'producción';
+    return f.filter((x) => {
+      if (!matchAmb(x)) return false;
+      const fecha = (x.fecha_emision || x.created_at || '').slice(0, 10);
+      if (b.desde && fecha < b.desde) return false;
+      if (b.hasta && fecha > b.hasta) return false;
+      return true;
+    });
+  }, [facturas, ambiente, rango, desde, hasta]);
+
   const metricas = useMemo(() => {
-    const f = facturas || [];
-    const emitidas = f.filter((x) => x.estado === 'emitida');
-    const mesActual = new Date().toISOString().slice(0, 7);
-    const facturadoMes = emitidas
-      .filter((x) => (x.fecha_emision || x.created_at || '').startsWith(mesActual))
-      .reduce((s, x) => s + Number(x.importe || 0), 0);
+    const emitidas = base.filter((x) => x.estado === 'emitida');
     return {
-      facturadoMes,
+      facturado: emitidas.reduce((s, x) => s + Number(x.importe || 0), 0),
       emitidas: emitidas.length,
-      programadas: f.filter((x) => x.estado === 'programada').length,
-      conError: f.filter((x) => x.estado === 'error').length,
+      programadas: base.filter((x) => x.estado === 'programada').length,
+      conError: base.filter((x) => x.estado === 'error').length,
     };
-  }, [facturas]);
+  }, [base]);
 
-  const filtradas = useMemo(() => {
-    const f = facturas || [];
-    return filtro === 'todas' ? f : f.filter((x) => x.estado === filtro);
-  }, [facturas, filtro]);
+  const filtradas = useMemo(
+    () => filtro === 'todas' ? base : base.filter((x) => x.estado === filtro),
+    [base, filtro],
+  );
 
-  // Reset del paginado al cambiar de filtro.
-  useEffect(() => { setVisibles(PAGINA); }, [filtro]);
+  // Reset del paginado al cambiar de filtro o de los filtros de arriba.
+  useEffect(() => { setVisibles(PAGINA); }, [filtro, ambiente, rango, desde, hasta]);
 
   if (!facturas) return <div className="card"><div className="spinner-lg" /></div>;
 
   return (
     <div>
       <h2>Dashboard</h2>
-      <div className="metricas">
-        <div className="mcard"><span className="lbl">Facturado (mes)</span><span className="val">{money(metricas.facturadoMes)}</span></div>
+
+      <div className="row" style={{ marginTop: 0, gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+        <div>
+          <label className="muted sm">Ambiente</label>
+          <select value={ambiente} onChange={(e) => setAmbiente(e.target.value)} style={{ width: 'auto' }}>
+            <option value="produccion">Producción</option>
+            <option value="pruebas">Pruebas</option>
+            <option value="todos">Todos</option>
+          </select>
+        </div>
+        <div>
+          <label className="muted sm">Período</label>
+          <select value={rango} onChange={(e) => setRango(e.target.value)} style={{ width: 'auto' }}>
+            <option value="mes">Mes actual</option>
+            <option value="mesAnterior">Mes anterior</option>
+            <option value="3meses">Últimos 3 meses</option>
+            <option value="todo">Todo</option>
+            <option value="personalizado">Personalizado</option>
+          </select>
+        </div>
+        {rango === 'personalizado' && (
+          <>
+            <div><label className="muted sm">Desde</label><input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} style={{ width: 'auto' }} /></div>
+            <div><label className="muted sm">Hasta</label><input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} style={{ width: 'auto' }} /></div>
+          </>
+        )}
+      </div>
+
+      <div className="metricas" style={{ marginTop: 12 }}>
+        <div className="mcard"><span className="lbl">Facturado (período)</span><span className="val">{money(metricas.facturado)}</span></div>
         <div className="mcard"><span className="lbl">Emitidas</span><span className="val ok">{metricas.emitidas}</span></div>
         <div className="mcard"><span className="lbl">Programadas</span><span className="val prog">{metricas.programadas}</span></div>
         <div className="mcard"><span className="lbl">Con error</span><span className="val err">{metricas.conError}</span></div>
@@ -165,7 +223,10 @@ export default function Dashboard() {
                         <td>{f.tipo || '-'}</td>
                         <td>{f.nro_comprobante ? `${f.punto_venta}-${String(f.nro_comprobante).padStart(8, '0')}` : '-'}</td>
                         <td>{money(f.importe)}</td>
-                        <td><span className={`pill ${f.estado === 'emitida' ? 'ok' : err ? 'err' : 'prog'}`}><span className="d" />{f.estado}</span></td>
+                        <td>
+                          <span className={`pill ${f.estado === 'emitida' ? 'ok' : err ? 'err' : 'prog'}`}><span className="d" />{f.estado}</span>
+                          {f.ambiente !== 'producción' && <span className="muted sm" style={{ marginLeft: 6 }} title="Ambiente de pruebas (sin validez fiscal)">prueba</span>}
+                        </td>
                         <td style={{ textAlign: 'right' }}>
                           {f.estado === 'emitida'
                             ? <div className="row" style={{ marginTop: 0, gap: 6, justifyContent: 'flex-end' }}>
